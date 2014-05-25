@@ -1,0 +1,1 @@
+<?php echo $this->Html->image($this->Html->url(array('controller'=>'login', 'action'=>'captcha'), true),array('style'=>'','vspace'=>2)); ?>
