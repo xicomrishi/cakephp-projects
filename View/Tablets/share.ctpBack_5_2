@@ -1,0 +1,296 @@
+<?php 
+		echo $this->Html->script(array('jquery.bxslider.js'));
+		echo '<link href=\'https://fonts.googleapis.com/css?family=Maven+Pro:500\' rel=\'stylesheet\' type=\'text/css\'>';
+?>
+<script src="https://platform.twitter.com/widgets.js"></script>
+<script>
+	$(document).ready(function() {
+					
+		$('.bxslider').bxSlider({
+			minSlides:1,
+			maxSlides: 2,
+			slideWidth: 440,
+			slideMargin: 13			
+		});
+						
+		$('.preview').click(function(e) {
+			$('#overlay').fadeIn();
+			$('.view_deal').fadeIn();
+			e.preventDefault();
+		});
+		
+		$('#overlay ,.close').click(function(e) {
+			$('#overlay').fadeOut();
+			$('.index-popup').fadeOut();
+			e.preventDefault();
+		});
+		
+		
+	});
+	
+	function share(value)
+	{			
+		$("#share").submit();		
+	}
+	
+</script>
+
+<div class="page-width">
+	<div class="container-inner">
+	<header class="header">
+		
+		<figure class="profile-pic">
+			<div class="profile-div">
+				<div class="profile-img-area">
+					<?php 
+							if(!empty($loggedInUser['User']['image']) && file_exists(PROFILE.$loggedInUser['User']['image']))
+							{
+								echo $this->Html->image(PROFILEURL.$loggedInUser['User']['image'], array('alt'=>'loading image'));
+							}
+							else
+							{
+								echo $this->Html->image('no_image_available.jpg', array('alt'=>'loading image'));
+							}
+					?>
+				</div>
+			</div>			
+			<figcaption>
+				<?php 				
+						$username = trim($loggedInUser['User']['first_name']).' '.trim($loggedInUser['User']['last_name']); 
+						$username = rtrim($username, " ");
+				?>
+				Hi <strong><?php echo $username;?></strong>, 
+				<?php if ($client_details['Admin']['company']=='Greater Northeast Philadelphia Chamber of Commerce') echo $client_details['Admin']['company'].' would like you to share this event with all '; else echo $client_details['Admin']['company']. ' would like you to share this deal with all '; 
+				 
+						if($this->Session->read('LoginType') == 'facebook')
+						{
+							echo $loggedInUser['User']['fb_friends'] != 0?$loggedInUser['User']['fb_friends']:'';
+						}
+						else if($this->Session->read('LoginType') == 'twitter')
+						{
+							echo $loggedInUser['User']['tw_friends'] != 0?$loggedInUser['User']['tw_friends']:'';
+						}
+				?> 				
+				of your  
+				
+					<?php 							
+							if($deal['AdminClientDeal']['type'] == 1)
+							{
+								echo 'friends and you will receive <strong>'.$deal['AdminClientDeal']['price'].'% off '.$deal['AdminClientDeal']['product'];
+							}
+							else if($deal['AdminClientDeal']['type'] == 2)
+							{
+								echo 'friends and you will receive <strong>$'.$deal['AdminClientDeal']['price'].' off '.$deal['AdminClientDeal']['product'];
+							}
+							else if($deal['AdminClientDeal']['type'] == 3)
+							{
+								echo 'friends and you will receive <strong> Buy One Get One Free '.$deal['AdminClientDeal']['product'];
+							}
+                            else if($deal['AdminClientDeal']['type'] == 5)
+							{
+								echo 'friends and make our 92nd '.$deal['AdminClientDeal']['product']. ' go ViRAL!';
+							}
+							else
+							{
+								echo 'friends and you will receive<strong> '.$deal['AdminClientDeal']['product'];
+							}
+					?>!</strong> <strong>Please follow the 3 steps below</strong>. Thank you.
+			</figcaption>
+		</figure>
+		<div class="clear"></div>
+	</header>
+	<section class="content">
+		<ul class="steps">
+			<li>
+				<em></em>
+					<span class="step-shape">
+						
+							<?php //echo $this->Html->image('thumb-up.png');?>
+						
+							<td align="left" style="border-bottom:1px solid #89b7ce" height="47">
+							<?php 
+									if($client_details != '') { 
+										if($this->Session->read('LoginType') == 'facebook')
+										{
+							?>
+											<span class="step-shape-blue">
+												<label class="step_1"><?php echo $this->Html->image('1.png'); ?></label>			
+												<div class="facebook_content">
+													  <?php $url = "//www.facebook.com/plugins/like.php?href=https%3A%2F%2Fwww.facebook.com%2F".$client_details['Admin']['facebook_url']."&amp;width=100&amp;height=50&amp;colorscheme=light&amp;layout=button&amp;action=like&amp;show_faces=false&amp;send=false&amp;appId=249418735228119"; ?>
+													<iframe id="facebook-share" src="<?php echo $url; ?>" scrolling="no" frameborder="0" style="border:none; overflow:hidden; width:115px; height:50px;zoom:100%;"></iframe>
+														
+												</div>
+											</span>
+							
+							<?php 		} 
+										else if($this->Session->read('LoginType') == 'twitter')
+										{
+							?>				
+											<span class="sky-blue">	
+												<label class="step_1_twitter"><?php echo $this->Html->image('twitter_1.png'); ?></label>
+												<iframe id="twitter-widget-0" allowtransparency="true" src="https://platform.twitter.com/widgets/follow_button.1384205748.html#_=1384850333975&dnt=true&id=twitter-widget-0&lang=en&screen_name=<?php echo $client_details['Admin']['twitter_url'];?>&show_count=false&show_screen_name=false&size=xl" class="twitter-follow-button shadow twitter-follow-button nothidden iframy shadow1 iframytwit" title="Twitter Follow Button" data-twttr-rendered="false" style="border:none; overflow:hidden; width:58px; height:20px;-webkit-border-radius: 3px; border-radius: 3px;" frameborder="0" scrolling="no"></iframe>
+											</span>
+							<?php		}	
+								}	
+							?>
+						</td>
+				
+				</span>
+			</li>
+			<li>
+				<em></em>
+				<span class="step-shape">
+							
+					<?php 
+							echo $this->Form->create('Share', array('id'=>'share'));
+								echo $this->Form->input('id', array('type'=>'hidden'));
+					?>
+								<a href="javascript:share()" class='light-red'>
+									Share
+									<label class="step_2"><?php echo $this->Html->image('2.png'); ?></label>		
+								</a>
+					<?php			//echo $this->Html->link('Share', 'javascript:share();',array('class'=>'light-red'));
+							echo $this->Form->end();
+					?>
+				</span>
+			</li>
+			<li>
+				<em></em>
+				<span class="step-shape">
+					
+					<a href="<?php echo SITE_URL.'tablets/exit_page'; ?>" class='gry'>
+						Exit
+						<label class="step_3"><?php echo $this->Html->image('3.png'); ?></label>	
+					</a>		
+					<?php //echo $this->Html->link('Exit', array('controller'=>'tablets', 'action'=>'exit_page'), array('class'=>'gry'));?>
+				</span>
+			</li>
+		</ul>
+		<div>
+			<a href="#" class="preview">Click to see a preview of 
+				what will be posted to your status</a>
+		</div>
+		<?php if(!empty($slider_deal)) { ?>
+			<div class="sliderSec share-slider-new">
+				<ul class="bxslider">
+					<?php 
+							foreach($slider_deal as $slider) 
+							{ 
+								if(!empty($slider['AdminIcon']['image']) && file_exists(DEALSLIDER.$slider['AdminIcon']['image'])) 
+								{
+					?>
+									<li>								
+										<div class="tecket">
+											<figure>
+												<?php 
+														echo $this->Html->image(DEALSLIDERURL.$slider['AdminIcon']['image'], 
+																					array(
+																						'alt'=>$slider['AdminClientDeal']['deal_icon'],																				
+																						'width'=>98, 'height'=>93
+																					)
+																				); 
+												?>
+											</figure>
+											<div class="figure-info">
+												<h3><?php echo $this->Text->truncate($slider['Admin']['company'], '20', array('exact'=>true)); ?></h3>
+												<h3><?php echo $slider['AdminClientDeal']['title']; ?></h3>
+												<p>
+													<?php 
+															if($slider['AdminClientDeal']['type'] == 1)
+															{
+																echo 'Get '.$slider['AdminClientDeal']['price'].'% off '.$slider['AdminClientDeal']['product'];
+															}
+															else if($slider['AdminClientDeal']['type'] == 2)
+															{
+																echo 'Get $'.$slider['AdminClientDeal']['price'].' off '.$slider['AdminClientDeal']['product'];
+															}
+															else if($slider['AdminClientDeal']['type'] == 3)
+															{
+																echo 'Buy One Get One Free '.$slider['AdminClientDeal']['product'];																
+															}
+															else
+															{
+																echo $slider['AdminClientDeal']['product'];
+															}
+													?>
+												</p>
+											</div>
+										</div>	
+									</li>
+					<?php 		} 
+							} 
+					?>	
+				</ul>
+			</div>
+		<?php } ?>
+		 <!--popup-->
+		<div class="index-popup view_deal" style="display:none">
+			<div class="wrap">
+				<figure>
+					<?php echo $this->Html->image(DEALURL.$deal['AdminClientDeal']['image'], 
+													array(
+														'alt'=>$deal['AdminClientDeal']['title'],
+														'width'=>394, 'height'=>394,
+													)
+												); 
+					?>
+				</figure>
+				<a href="#" class="close"><span>X</span></a>
+				<div class="share-text">
+					<?php 
+							if($this->Session->read('LoginType') == 'facebook')
+							{
+					?>			
+								<h3>What will be posted on your facebook wall?</h3>
+								<p><?php echo $fb_message; ?></p>
+					<?php	}
+							else if($this->Session->read('LoginType') == 'twitter')
+							{
+					?>			<h3>What will be posted on your twitter wall?</h3>
+								<p><?php echo $tw_message; ?></p>
+					<?php	}
+					?>
+				</div>
+			</div>
+		</div>
+		<div id="overlay" style="display:none"></div>
+		<!--popup-->
+		
+	</section>
+	<footer class="footer">
+		
+		
+		<h3>Want This APP?</h3>
+		<p>Call 1800-SocialEyes. Turn Your Business into a Social Referral Center!</p>
+	</footer>
+	</div>
+</div>
+
+
+<style>
+.facebook_content {
+    float: left;
+    height: 40px;
+    margin: 36px 9px;
+    overflow: hidden;
+    width: 66px;
+}
+
+.twitter_content {
+    float: left;
+    height: 29px;
+    margin: -56px 18px;
+    overflow: hidden;
+    width: 74px;
+    border-radius:5px;
+    }
+
+.twitter_content a {
+    background: none repeat scroll 0 0 transparent;
+    border: medium none;
+    display:none;
+}
+.xl .btn .label {    padding: 0 8px 0 24px !important;}
+.xl .btn i{ left :2px!important;}
+
+</style>

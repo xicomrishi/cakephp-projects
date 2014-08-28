@@ -1,0 +1,1010 @@
+<?php
+
+/**
+ * Name : Email Controller
+ * Created : 8 Nov 2013
+ * Purpose : Default Email controller
+ * Author : Prakhar Johri
+ */
+class EmailsController extends AdminAppController {
+	
+	public $name = 'Emails';
+	public $uses = array('Email');
+	public $components = array('Admin.Uploader');
+	public $paginate = array ('limit' => 30);		
+		
+	public function beforeFilter()
+	{
+		//Set auth model Admin
+		parent::beforeFilter();
+		$this->Auth->authenticate = array(
+			'Form' => array('userModel' => 'Admin')
+		);
+		$this->Auth->allow('register', 'cron_feedback_email');
+	}	
+		
+	/**
+	 * name : manage method
+	 * Purpose : Manage all the Email templates
+	 * author : Prakhar Johri
+	 * Created : 8 Nov 2013
+	 */
+	public function manage()
+	{
+
+		$this->loadModel('EmailTemplate');
+
+		$conditions = array();
+		if(isset($this->request->data['option']) && !empty($this->request->data['option']))
+		{
+			if(!empty($this->request->data['ids']))
+			{
+				switch($this->request->data['option'])
+				{
+					case "delete":
+						$this->EmailTemplate->deleteAll(array('id' => $this->request->data['ids']));
+						$this->Session->setFlash(__('Selected email template deleted sucessfully'));
+					break;
+					case "active":
+						$this->EmailTemplate->updateAll(array('status' => "'active'"), array('id' =>  $this->request->data['ids'] ));
+					break;
+					case "deactive":
+						$this->EmailTemplate->updateAll(array('status' => "'inactive'"), array('id' =>  $this->request->data['ids'] ));
+					break;
+				}
+			}
+		}
+		if($this->request->is('ajax'))
+		{
+			$this->layout = 'ajax';
+		}
+
+		$this->paginate = array(
+				'limit' => 30,
+				'order' => array('id' => 'DESC')
+		);
+		$templates = $this->Paginate('EmailTemplate');
+		
+		$this->set('templates',$templates);
+		
+	}
+	
+	/**
+	 * name : add method
+	 * Purpose : Add new email template
+	 * author : Prakhar Johri
+	 * Created : 8 Nov 2013 
+	 */	
+	function add($id = NULL)
+	{
+		$this->loadModel('Admin.EmailTemplate');
+		
+		if($this->request->data)
+		{
+			$data_arr = $this->request->data;
+			$data_arr['EmailTemplate']['name'] = $this->data['EmailTemplate']['email_identifier'];
+			if(empty($this->request->data['EmailTemplate']['id']))
+			{
+				$data_arr['EmailTemplate']['email_identifier'] = $this->EmailTemplate->generate_identifier($this->data['EmailTemplate']['email_identifier']);
+			}
+			
+			$this->EmailTemplate->save($data_arr);
+			
+			if(!empty($this->request->data['EmailTemplate']['id']))
+			{
+				$this->Session->setFlash('Email Template has been updated successfully');
+			}
+			else
+			{
+				$this->Session->setFlash('Email Template save successfully');
+			}
+			$this->redirect('manage');
+		}
+		if(!empty($id))
+		{
+			$this->request->data = $this->EmailTemplate->findById($id);
+		}
+	}
+	
+	/**
+	 * name : edit method
+	 * Purpose :edit email template
+	 * author : Prakhar Johri
+	 * Created : 8 Nov 2013
+	 */
+	function edit($id = NULL)
+	{
+		$this->loadModel('EmailTemplate');
+		if($this->request->data)
+		{
+			$data_arr = $this->request->data;
+			$data_arr['EmailTemplate']['name'] = $this->data['EmailTemplate']['email_identifier'];
+			unset($data_arr['EmailTemplate']['email_identifier']);
+			$this->EmailTemplate->save($data_arr);
+			
+			if(!empty($this->request->data['EmailTemplate']['id']))
+			{
+				$this->Session->setFlash('Email Template has been updated successfully');
+			}
+			else
+			{
+				$this->Session->setFlash('Email Template save successfully');
+			}
+			$this->redirect('manage');
+
+		}
+		if(!empty($id))
+		{
+			$this->request->data = $this->EmailTemplate->findById($id);
+		}
+	}
+
+	 /**
+	 * name : delete method
+	 * Purpose :delete email template
+	 * author : Prakhar Johri
+	 * Created : 8 Nov 2013
+	 */
+	public function delete($id = null) {
+		
+		$this->loadModel('EmailTemplate');
+		$this->EmailTemplate->id = $id;
+		$data = $this->EmailTemplate->findById($id);
+		$email =  $data['EmailTemplate']['email_identifier'];
+		$this->EmailTemplate->delete($id);
+
+		$this->Session->setFlash(__('User was not deleted'));
+		$this->redirect(array('action' => 'manage'));
+	}
+	
+	/**
+	 * name : feedback_email method
+	 * Purpose :edit email template
+	 * author : Deepak Sharma
+	 * Created : 12 March 2014
+	 */
+	function feedback_email($client_id = NULL)
+	{
+		$this->loadModel('Admin');
+		$this->Admin->bindModel(array(
+					'hasOne'=>array(
+						'AdminClientFeedbackEmail'=>array(
+							'className'=>'AdminClientFeedbackEmail',
+							'foreignKey'=>'client_id'
+						)
+					)
+				),false
+			);
+		
+		if($this->request->data)
+		{
+			$data_arr = $this->request->data;
+			//pr($data_arr);die;
+			
+			$this->Admin->saveAssociated($data_arr);
+			
+			if(!empty($this->request->data['EmailTemplate']['id']))
+			{
+				$this->Session->setFlash('Email Template has been updated successfully');
+			}
+			else
+			{
+				$this->Session->setFlash('Email Template save successfully');
+			}
+			$this->redirect(array('action'=>'emails', 'action'=>'feedback_email', $this->data['AdminClientFeedbackEmail']['client_id']));
+
+		}
+		if(!empty($client_id))
+		{			
+			$this->request->data = $this->Admin->find('first', array(
+																'conditions'=>array('Admin.id'=>$client_id),
+																'fields'=>array('Admin.feedback_email','Admin.id', 'AdminClientFeedbackEmail.*')
+															)
+												);
+		}
+		//pr($this->request->data);die;
+	}
+	/**
+	 * name : marketing_send_email method
+	 * Purpose : send marketing email to user who shared the client deal
+	 * author : Deepak Sharma
+	 * Created : 27 March 2014
+	 */
+	function marketing_history_email($client_id = NULL)
+	{
+		$this->loadModel('AdminClientMarketingEmail');
+
+		$conditions = array('client_id'=>$this->Auth->user('id'), 'type'=>'send');
+		if(isset($this->request->data['option']) && !empty($this->request->data['option']))
+		{
+			if(!empty($this->request->data['ids']))
+			{
+				switch($this->request->data['option'])
+				{
+					case "delete":
+						$this->EmailTemplate->deleteAll(array('id' => $this->request->data['ids']));
+						$this->Session->setFlash(__('Selected email template deleted sucessfully'));
+					break;
+					case "active":
+						$this->EmailTemplate->updateAll(array('status' => "'active'"), array('id' =>  $this->request->data['ids'] ));
+					break;
+					case "deactive":
+						$this->EmailTemplate->updateAll(array('status' => "'inactive'"), array('id' =>  $this->request->data['ids'] ));
+					break;
+				}
+			}
+		}
+		if($this->request->is('ajax'))
+		{
+			$this->layout = 'ajax';
+		}
+
+		$this->paginate = array(
+				'conditions'=>$conditions,
+				'limit' => 30,
+				'order' => array('id' => 'DESC')
+		);
+		$marketing_email_history = $this->Paginate('AdminClientMarketingEmail');
+		
+		$this->set(compact('marketing_email_history'));
+	}
+	/**
+	 * name : marketing_send_email method
+	 * Purpose : send marketing email to user who shared the client deal
+	 * author : Deepak Sharma
+	 * Created : 27 March 2014
+	 */
+	function marketing_history_email_view_users($marketing_email_id = NULL)
+	{
+		$this->loadModel('AdminClientMarketingEmailUser');
+		
+		$conditions = array("admin_client_marketing_email_id"=>$marketing_email_id);
+		if(isset($this->request->data['option']) && !empty($this->request->data['option']))
+		{
+			if(!empty($this->request->data['ids']))
+			{
+				switch($this->request->data['option'])
+				{
+					case "delete":
+						$this->EmailTemplate->deleteAll(array('id' => $this->request->data['ids']));
+						$this->Session->setFlash(__('Selected email template deleted sucessfully'));
+					break;
+					case "active":
+						$this->EmailTemplate->updateAll(array('status' => "'active'"), array('id' =>  $this->request->data['ids'] ));
+					break;
+					case "deactive":
+						$this->EmailTemplate->updateAll(array('status' => "'inactive'"), array('id' =>  $this->request->data['ids'] ));
+					break;
+				}
+			}
+		}
+		
+		$this->paginate = array(
+				'conditions'=>$conditions,
+				'limit' => 30,
+				'order' => array('id' => 'DESC')
+		);
+		$marketing_email_history_users = $this->Paginate('AdminClientMarketingEmailUser');
+		//pr($marketing_email_history_users);die;
+		$this->set(compact('marketing_email_history_users'));
+	}
+	/**
+	 * name : marketing_send_email method
+	 * Purpose : send marketing email to user who shared the client deal
+	 * author : Deepak Sharma
+	 * Created : 18 March 2014
+	 */
+	function marketing_send_email($client_id = NULL)
+	{
+		$this->loadModel('AdminClientDealShare');
+		if(!empty($this->data))
+		{			
+			$this->loadModel('AdminClientMarketingEmail');
+			$this->loadModel('AdminClientMarketingEmailUser');
+			$getPostedData = $this->request->data;
+			$this->request->data['AdminClientMarketingEmail']['client_id'] = $this->Auth->user('id');
+			$file_error = 0;
+			
+			if(!empty($getPostedData['AdminClientMarketingEmail']['file']['name']))
+			{
+				$image_array = $this->request->data['AdminClientMarketingEmail']['file'];
+				$image_info = pathinfo($image_array['name']);
+				$image_new_name = substr($image_info['filename'],0,70).'_'.time().'_'.$this->Auth->user('id');
+				$thumbnails = false;
+				
+				$this->Uploader->upload($image_array, EMAILATTACHMENT, $thumbnails, $image_new_name );
+			
+				if ( $this->Uploader->error )
+				{
+					$error = $this->Uploader->errorMessage;
+					$this->Session->setFlash($error);
+					$file_error++;					
+				}
+				else
+				{							
+					$this->request->data['AdminClientMarketingEmail']['attachment'] = $this->Uploader->filename;
+					$this->Uploader->filename = '';
+				}
+			}
+			if($file_error == 0)
+			{
+				if($this->AdminClientMarketingEmail->save($this->request->data))
+				{
+					
+					$last_inserted_id = $this->AdminClientMarketingEmail->getlastInsertId();
+					
+					if($this->request->data['AdminClientMarketingEmail']['type'] == 'send')
+					{
+						foreach($this->request->data['AdminClientMarketingEmail']['users'] as $user_id)
+						{
+							$from_email = $getPostedData['AdminClientMarketingEmail']['from_email'];
+							$from_name = $getPostedData['AdminClientMarketingEmail']['from_name'];
+							$subject = $getPostedData['AdminClientMarketingEmail']['subject'];
+							$this->loadModel('User');
+							$user_details = $this->User->read('first_name, last_name, email', $user_id);
+							
+							try
+							{
+								$email = new CakeEmail('smtp'); 
+								$email->from(array($from_email=>$from_name));
+								$email->to($user_details['User']['email']);
+								$email->subject($subject);
+								$email->emailFormat('html');
+								
+								$msg = $getPostedData['AdminClientMarketingEmail']['content'];
+								$token = array('{user_first_name}','{user_last_name}' );
+								$token_value = array(
+														$user_details['User']['first_name'],
+														$user_details['User']['last_name'],																								
+													);
+								$attachment = $this->request->data['AdminClientMarketingEmail']['attachment'];
+								if(!empty($attachment) && file_exists(EMAILATTACHMENT.$attachment))
+								{
+									$attachment_new = realpath('./files/email_attachment/'.$attachment);
+									$path_parts = pathinfo($attachment_new);
+									$size = getimagesize($attachment_new);	
+									$email->attachments(array(
+										$path_parts['basename'] => array(
+											'file' => $attachment_new,
+											'mimetype' => $size['mime'],
+											'contentId' => 'my-unique-id'
+										)
+									));
+								}
+								$msg = str_replace($token, $token_value, $msg);
+								
+								if ($email->send($msg)) {
+									$status = 'sent';
+									$error = '';
+								} 
+								else 
+								{
+									$status = 'not sent';
+									$error =  $this->Email->smtpError;
+								}
+							}
+							catch(Exception $e)
+							{
+								$status = 'not sent';
+								$error =  $e->getMessage();
+							}
+							$emailUserData['admin_client_marketing_email_id'] = $last_inserted_id;
+							$emailUserData['user_id'] = $user_id;
+							$emailUserData['user_email'] = $user_details['User']['email'];						
+							$emailUserData['status'] = $status;
+							$emailUserData['error_text'] = $error;
+							$this->AdminClientMarketingEmailUser->create();
+							$this->AdminClientMarketingEmailUser->save($emailUserData);
+						}
+						$this->Session->setFlash('Email send sucessfully');
+						$this->redirect(array('action'=>'marketing_history_email'));
+					}
+					else
+					{
+						
+						foreach($this->request->data['AdminClientMarketingEmail']['users'] as $key=>$user_id)
+						{
+							$this->loadModel('User');
+							$user_details = $this->User->read('email', $user_id);
+							$emailUserData['admin_client_marketing_email_id'] = $last_inserted_id;
+							$emailUserData['user_id'] = $user_id;
+							$emailUserData['user_email'] = $user_details['User']['email'];	
+							$data[] = $emailUserData;						
+						}
+						$this->AdminClientMarketingEmailUser->saveAll($data);
+						$this->Session->setFlash('Email saved sucessfully');
+						
+						if($this->request->data['AdminClientMarketingEmail']['type'] == 'schedule')
+						{
+							$this->redirect(array('action'=>'marketing_schedule_email'));
+						}
+						else
+						{
+							$this->redirect(array('action'=>'marketing_draft_email'));
+						}
+					}
+					
+				}
+			}
+		}
+		$this->AdminClientDealShare->bindModel(array(
+					'belongsTo'=>array(
+						'User'=>array(
+							'className'=>'User',
+							'foreignKey'=>'user_id',
+							'type'=>'INNER'
+						)
+					)
+				),false
+			);
+		$conditions = array('AdminClientDealShare.client_id'=>$this->Auth->user('id'));
+				
+		$data = $this->AdminClientDealShare->find('all', array(
+												'conditions'=>$conditions,
+												'group'=>'user_id',
+												'fields'=>array('AdminClientDealShare.*', 'User.id', 'User.email')												
+											)
+								);
+		
+		$emails = array();
+		
+		foreach($data as $users)
+		{			
+			$emails[$users['User']['id']] = $users['User']['email'];	
+		}
+		//pr($emails);die;		
+		$this->set(compact('emails'));
+	}
+	
+	function marketing_filter_email($client_id = NULL)
+	{
+		
+		$this->layout= '';
+		$this->autoRender = false;
+		$this->loadModel('AdminClientDealShare');
+		$this->AdminClientDealShare->bindModel(array(
+					'belongsTo'=>array(
+						'User'=>array(
+							'className'=>'User',
+							'foreignKey'=>'user_id',
+							'type'=>'INNER'
+						)
+					)
+				),false
+			);
+			
+		$resp = '';
+		$emails = array();
+		if(!empty($_GET) && $this->request->isAjax())
+		{
+			$conditions = '';
+			if($_GET['from_date'] != '' && $_GET['to_date'] != '')
+			{
+				$conditions .= 'DATE(AdminClientDealShare.created) >= "'.$_GET['from_date'].'" AND DATE(AdminClientDealShare.created) <="'.$_GET['to_date'].'"  AND';
+			}			
+			if($_GET['share_type'] != '')
+			{
+				$conditions .= ' AdminClientDealShare.share_type = "'.$_GET['share_type'].'"';
+			}
+			$conditions = rtrim($conditions, 'AND');
+			$data = $this->AdminClientDealShare->find('all', array(
+								'conditions'=>$conditions,
+								'group'=>'user_id',
+								'fields'=>array('AdminClientDealShare.*', 'User.id', 'User.email')												
+							)
+				);			
+			
+			foreach($data as $users)
+			{			
+				$emails[$users['User']['id']] = $users['User']['email'];	
+			}
+					
+			
+		}	
+		$this->set(compact('emails'));
+		$this->viewPath = 'Elements'.DS;
+		$this->render('market_email_users_list');
+	}
+	
+	/**
+	 * name : marketing_send_email method
+	 * Purpose : send marketing email to user who shared the client deal
+	 * author : Deepak Sharma
+	 * Created : 28 March 2014
+	 */
+	function marketing_schedule_email($client_id = NULL)
+	{
+		$this->loadModel('AdminClientMarketingEmail');
+
+		$conditions = array('client_id'=>$this->Auth->user('id'), 'type'=>'schedule');
+		if(isset($this->request->data['option']) && !empty($this->request->data['option']))
+		{
+			if(!empty($this->request->data['ids']))
+			{
+				switch($this->request->data['option'])
+				{
+					case "delete":
+						$this->AdminClientMarketingEmail->bindModel(array(
+								'hasMany'=>array(
+									'AdminClientMarketingEmailUser'=>array(
+										'className'=>'AdminClientMarketingEmailUser',
+										'foreignKey'=>'admin_client_marketing_email_id',
+										'dependent'=>true
+									)
+								)
+							), false
+						);
+						$this->AdminClientMarketingEmail->deleteAll(array('id' => $this->request->data['ids']));
+						$this->Session->setFlash(__('Selected email template deleted sucessfully'));
+					break;					
+				}
+			}
+		}
+		if($this->request->is('ajax'))
+		{
+			$this->layout = 'ajax';
+		}
+
+		$this->paginate = array(
+				'conditions'=>$conditions,
+				'limit' => 30,
+				'order' => array('id' => 'DESC')
+		);
+		$marketing_email_history = $this->Paginate('AdminClientMarketingEmail');
+		
+		$this->set(compact('marketing_email_history'));
+	}
+	
+	/**
+	 * name : marketing_send_email method
+	 * Purpose : send marketing email to user who shared the client deal
+	 * author : Deepak Sharma
+	 * Created : 31 March 2014
+	 */
+	function marketing_schedule_edit_email($email_id = NULL)
+	{
+		$this->loadModel('AdminClientMarketingEmail');
+		$this->loadModel('AdminClientDealShare');
+		$this->loadModel('AdminClientMarketingEmailUser');	
+		if($this->request->data)
+		{
+			$getPostedData = $this->request->data;
+			
+			if($this->request->data['AdminClientMarketingEmail']['type'] == 'draft')
+			{
+				$this->request->data['AdminClientMarketingEmail']['schedule_time'] = NULL;
+				$this->request->data['AdminClientMarketingEmail']['schedule_time'] = NULL;
+			}
+			if($this->AdminClientMarketingEmail->save($this->request->data))
+			{
+				$this->AdminClientMarketingEmailUser->deleteAll(array('admin_client_marketing_email_id'=>$getPostedData['AdminClientMarketingEmail']['id']));
+				
+				if($this->request->data['AdminClientMarketingEmail']['type'] == 'send')
+				{
+					foreach($this->request->data['AdminClientMarketingEmail']['users'] as $user_id)
+					{
+						$from_email = $getPostedData['AdminClientMarketingEmail']['from_email'];
+						$from_name = $getPostedData['AdminClientMarketingEmail']['from_name'];
+						$subject = $getPostedData['AdminClientMarketingEmail']['subject'];
+						$this->loadModel('User');
+						$user_details = $this->User->read('first_name, last_name, email', $user_id);
+						
+						try
+						{
+							$email = new CakeEmail('smtp'); 
+							$email->from(array($from_email=>$from_name));
+							$email->to($user_details['User']['email']);
+							$email->subject($subject);
+							$email->emailFormat('html');
+							
+							$msg = $getPostedData['AdminClientMarketingEmail']['content'];
+							$token = array('{user_first_name}','{user_last_name}' );
+							$token_value = array(
+													$user_details['User']['first_name'],
+													$user_details['User']['last_name'],																								
+												);
+							
+							$msg = str_replace($token, $token_value, $msg);
+							
+							if ($email->send($msg)) {
+								$status = 'sent';
+								$error = '';
+							} 
+							else 
+							{
+								$status = 'not sent';
+								$error =  $this->Email->smtpError;
+							}
+						}
+						catch(Exception $e)
+						{
+							$status = 'not sent';
+							$error =  $e->getMessage();
+						}
+						$emailUserData['admin_client_marketing_email_id'] = $getPostedData['AdminClientMarketingEmail']['id'];
+						$emailUserData['user_id'] = $user_id;
+						$emailUserData['user_email'] = $user_details['User']['email'];						
+						$emailUserData['status'] = $status;
+						$emailUserData['error_text'] = $error;
+						$this->AdminClientMarketingEmailUser->create();
+						$this->AdminClientMarketingEmailUser->save($emailUserData);
+					}
+					$this->Session->setFlash('Email send sucessfully');
+					$this->redirect(array('action'=>'marketing_history_email'));
+				}
+				else
+				{
+					
+					foreach($this->request->data['AdminClientMarketingEmail']['users'] as $key=>$user_id)
+					{
+						$this->loadModel('User');
+						$user_details = $this->User->read('email', $user_id);
+						$emailUserData['admin_client_marketing_email_id'] = $getPostedData['AdminClientMarketingEmail']['id'];
+						$emailUserData['user_id'] = $user_id;
+						$emailUserData['user_email'] = $user_details['User']['email'];	
+						$data[] = $emailUserData;						
+					}
+					$this->AdminClientMarketingEmailUser->saveAll($data);
+					$this->Session->setFlash('Email saved sucessfully');
+					if($this->request->data['AdminClientMarketingEmail']['type'] == 'schedule')
+					{
+						$this->redirect(array('action'=>'marketing_schedule_email'));
+					}
+					else
+					{
+						$this->redirect(array('action'=>'marketing_draft_email'));
+					}
+				}				
+
+			}
+		}
+		if(!empty($email_id))
+		{
+			$this->AdminClientDealShare->bindModel(array(
+					'belongsTo'=>array(
+						'User'=>array(
+							'className'=>'User',
+							'foreignKey'=>'user_id',
+							'type'=>'INNER'
+						)
+					)
+				),false
+			);
+			$conditions = array('AdminClientDealShare.client_id'=>$this->Auth->user('id'));
+					
+			$data = $this->AdminClientDealShare->find('all', array(
+													'conditions'=>$conditions,
+													'group'=>'user_id',
+													'fields'=>array('AdminClientDealShare.*', 'User.id', 'User.email')												
+												)
+									);
+			
+			$emails = array();
+			
+			foreach($data as $users)
+			{			
+				$emails[$users['User']['id']] = $users['User']['email'];	
+			}
+			//pr($emails);die;	
+			
+			$selectedUsers = $this->AdminClientMarketingEmailUser->find('list', array('conditions'=>array('admin_client_marketing_email_id'=>$email_id), 'fields'=>array('user_id')));
+			$this->request->data = $this->AdminClientMarketingEmail->findById($email_id);
+			$this->set(compact('emails', 'selectedUsers'));
+		}
+	}
+	/**
+	 * name : marketing_send_email method
+	 * Purpose : send marketing email to user who shared the client deal
+	 * author : Deepak Sharma
+	 * Created : 31 March 2014
+	 */
+	function marketing_schedule_change($email_id = NULL)
+	{
+		$this->loadModel('AdminClientMarketingEmail');
+		
+		if($this->request->data)
+		{				
+			$this->AdminClientMarketingEmail->save($this->request->data);
+			$this->Session->setFlash('Schedule updated successfully');
+			$this->redirect(array('controller'=>'emails', 'action'=>'marketing_schedule_email'));
+		}
+		if(!empty($email_id))
+		{	
+			$this->request->data = $this->AdminClientMarketingEmail->read('id, schedule_date, schedule_time', $email_id);
+			$this->set(compact('emails', 'selectedUsers'));
+		}
+	}
+	/**
+	 * name : marketing_send_email method
+	 * Purpose : send marketing email to user who shared the client deal
+	 * author : Deepak Sharma
+	 * Created : 28 March 2014
+	 */
+	function marketing_draft_email($client_id = NULL)
+	{
+		$this->loadModel('AdminClientMarketingEmail');
+
+		$conditions = array('client_id'=>$this->Auth->user('id'), 'type'=>'draft');
+		if(isset($this->request->data['option']) && !empty($this->request->data['option']))
+		{
+			if(!empty($this->request->data['ids']))
+			{
+				switch($this->request->data['option'])
+				{
+					case "delete":
+						$this->EmailTemplate->deleteAll(array('id' => $this->request->data['ids']));
+						$this->Session->setFlash(__('Selected email template deleted sucessfully'));
+					break;
+					case "active":
+						$this->EmailTemplate->updateAll(array('status' => "'active'"), array('id' =>  $this->request->data['ids'] ));
+					break;
+					case "deactive":
+						$this->EmailTemplate->updateAll(array('status' => "'inactive'"), array('id' =>  $this->request->data['ids'] ));
+					break;
+				}
+			}
+		}
+		if($this->request->is('ajax'))
+		{
+			$this->layout = 'ajax';
+		}
+
+		$this->paginate = array(
+				'conditions'=>$conditions,
+				'limit' => 30,
+				'order' => array('id' => 'DESC')
+		);
+		$marketing_email_history = $this->Paginate('AdminClientMarketingEmail');
+		
+		$this->set(compact('marketing_email_history'));
+	}
+	
+	/**
+	 * name : marketing_draft_edit_email method
+	 * Purpose : edit draft email here
+	 * author : Deepak Sharma
+	 * Created : 1 April 2014
+	 */
+	function marketing_draft_edit_email($email_id = NULL)
+	{
+		$this->loadModel('AdminClientMarketingEmail');
+		$this->loadModel('AdminClientDealShare');
+		$this->loadModel('AdminClientMarketingEmailUser');	
+		if($this->request->data)
+		{
+			$getPostedData = $this->request->data;
+			
+			if($this->request->data['AdminClientMarketingEmail']['type'] == 'draft')
+			{
+				$this->request->data['AdminClientMarketingEmail']['schedule_time'] = NULL;
+				$this->request->data['AdminClientMarketingEmail']['schedule_time'] = NULL;
+			}
+			if($this->AdminClientMarketingEmail->save($this->request->data))
+			{
+				$this->AdminClientMarketingEmailUser->deleteAll(array('admin_client_marketing_email_id'=>$getPostedData['AdminClientMarketingEmail']['id']));
+				
+				if($this->request->data['AdminClientMarketingEmail']['type'] == 'send')
+				{
+					foreach($this->request->data['AdminClientMarketingEmail']['users'] as $user_id)
+					{
+						$from_email = $getPostedData['AdminClientMarketingEmail']['from_email'];
+						$from_name = $getPostedData['AdminClientMarketingEmail']['from_name'];
+						$subject = $getPostedData['AdminClientMarketingEmail']['subject'];
+						$this->loadModel('User');
+						$user_details = $this->User->read('first_name, last_name, email', $user_id);
+						
+						try
+						{
+							$email = new CakeEmail('smtp'); 
+							$email->from(array($from_email=>$from_name));
+							$email->to($user_details['User']['email']);
+							$email->subject($subject);
+							$email->emailFormat('html');
+							
+							$msg = $getPostedData['AdminClientMarketingEmail']['content'];
+							$token = array('{user_first_name}','{user_last_name}' );
+							$token_value = array(
+													$user_details['User']['first_name'],
+													$user_details['User']['last_name'],																								
+												);
+							
+							$msg = str_replace($token, $token_value, $msg);
+							
+							if ($email->send($msg)) {
+								$status = 'sent';
+								$error = '';
+							} 
+							else 
+							{
+								$status = 'not sent';
+								$error =  $this->Email->smtpError;
+							}
+						}
+						catch(Exception $e)
+						{
+							$status = 'not sent';
+							$error =  $e->getMessage();
+						}
+						$emailUserData['admin_client_marketing_email_id'] = $getPostedData['AdminClientMarketingEmail']['id'];
+						$emailUserData['user_id'] = $user_id;
+						$emailUserData['user_email'] = $user_details['User']['email'];						
+						$emailUserData['status'] = $status;
+						$emailUserData['error_text'] = $error;
+						$this->AdminClientMarketingEmailUser->create();
+						$this->AdminClientMarketingEmailUser->save($emailUserData);
+					}
+					$this->Session->setFlash('Email send sucessfully');
+					$this->redirect(array('action'=>'marketing_history_email'));
+				}
+				else
+				{
+					
+					foreach($this->request->data['AdminClientMarketingEmail']['users'] as $key=>$user_id)
+					{
+						$this->loadModel('User');
+						$user_details = $this->User->read('email', $user_id);
+						$emailUserData['admin_client_marketing_email_id'] = $getPostedData['AdminClientMarketingEmail']['id'];
+						$emailUserData['user_id'] = $user_id;
+						$emailUserData['user_email'] = $user_details['User']['email'];	
+						$data[] = $emailUserData;						
+					}
+					$this->AdminClientMarketingEmailUser->saveAll($data);
+					$this->Session->setFlash('Email saved sucessfully');
+					
+					if($this->request->data['AdminClientMarketingEmail']['type'] == 'schedule')
+					{
+						$this->redirect(array('action'=>'marketing_schedule_email'));
+					}
+					else
+					{
+						$this->redirect(array('action'=>'marketing_draft_email'));
+					}
+				}				
+
+			}
+		}
+		if(!empty($email_id))
+		{
+			$this->AdminClientDealShare->bindModel(array(
+					'belongsTo'=>array(
+						'User'=>array(
+							'className'=>'User',
+							'foreignKey'=>'user_id',
+							'type'=>'INNER'
+						)
+					)
+				),false
+			);
+			$conditions = array('AdminClientDealShare.client_id'=>$this->Auth->user('id'));
+					
+			$data = $this->AdminClientDealShare->find('all', array(
+													'conditions'=>$conditions,
+													'group'=>'user_id',
+													'fields'=>array('AdminClientDealShare.*', 'User.id', 'User.email')												
+												)
+									);
+			
+			$emails = array();
+			
+			foreach($data as $users)
+			{			
+				$emails[$users['User']['id']] = $users['User']['email'];	
+			}
+			//pr($emails);die;	
+			
+			$selectedUsers = $this->AdminClientMarketingEmailUser->find('list', array('conditions'=>array('admin_client_marketing_email_id'=>$email_id), 'fields'=>array('user_id')));
+			$this->request->data = $this->AdminClientMarketingEmail->findById($email_id);
+			$this->set(compact('emails', 'selectedUsers'));
+		}
+	}
+	
+	/**
+	 * name : marketing_resend_email method
+	 * Purpose : resend emails here
+	 * author : Deepak Sharma
+	 * Created : 1 April 2014
+	 */
+	function marketing_resend_email($email_id = NULL)
+	{	
+		$this->loadModel('AdminClientMarketingEmail');
+		
+		
+		if(!empty($email_id))
+		{			
+			$this->AdminClientMarketingEmail->bindModel(array(
+					'hasMany'=>array(
+						'AdminClientMarketingEmailUser'=>array(
+							'className'=>'AdminClientMarketingEmailUser'							
+						)
+					)
+				),false
+			);
+								
+			$data = $this->AdminClientMarketingEmail->findById($email_id);
+			
+			if(!empty($data) && !empty($data['AdminClientMarketingEmailUser']))
+			{
+				$this->loadModel('AdminClientMarketingEmailUser');
+				
+				$saveData['AdminClientMarketingEmail']['client_id'] = $data['AdminClientMarketingEmail']['client_id'];
+				$saveData['AdminClientMarketingEmail']['type'] = $data['AdminClientMarketingEmail']['type'];
+				$saveData['AdminClientMarketingEmail']['from_name'] = $data['AdminClientMarketingEmail']['from_name'];
+				$saveData['AdminClientMarketingEmail']['from_email'] = $data['AdminClientMarketingEmail']['from_email'];
+				$saveData['AdminClientMarketingEmail']['reply_to'] = $data['AdminClientMarketingEmail']['from_email'];
+				$saveData['AdminClientMarketingEmail']['subject'] = $data['AdminClientMarketingEmail']['from_email'];
+				$saveData['AdminClientMarketingEmail']['content'] = $data['AdminClientMarketingEmail']['from_email'];
+				$saveData['AdminClientMarketingEmail']['schedule_date'] = NULL;
+				$saveData['AdminClientMarketingEmail']['schedule_time'] = NULL;
+				
+				if($this->AdminClientMarketingEmail->save($saveData))
+				{
+					$last_inserted_id = $this->AdminClientMarketingEmail->getlastInsertId();
+					$from_email = $data['AdminClientMarketingEmail']['from_email'];
+					$from_name = $data['AdminClientMarketingEmail']['from_name'];
+					$subject = $data['AdminClientMarketingEmail']['subject'];
+					$this->loadModel('User');
+					
+					foreach($data['AdminClientMarketingEmailUser'] as $user_id)
+					{
+						$user_details = $this->User->read('first_name, last_name, email', $user_id['user_id']);
+						
+						try
+						{
+							$email = new CakeEmail('smtp'); 
+							$email->from(array($from_email=>$from_name));
+							$email->to($user_details['User']['email']);
+							$email->subject($subject);
+							$email->emailFormat('html');
+							
+							$msg = $data['AdminClientMarketingEmail']['content'];
+							$token = array('{user_first_name}','{user_last_name}' );
+							$token_value = array(
+													$user_details['User']['first_name'],
+													$user_details['User']['last_name'],																								
+												);
+							
+							$msg = str_replace($token, $token_value, $msg);
+							
+							if ($email->send($msg)) {
+								$status = 'sent';
+								$error = '';
+							} 
+							else 
+							{
+								$status = 'not sent';
+								$error =  $this->Email->smtpError;
+							}
+						}
+						catch(Exception $e)
+						{
+							$status = 'not sent';
+							$error =  $e->getMessage();
+						}
+						$emailUserData['admin_client_marketing_email_id'] = $last_inserted_id;
+						$emailUserData['user_id'] = $user_id['user_id'];
+						$emailUserData['user_email'] = $user_details['User']['email'];						
+						$emailUserData['status'] = $status;
+						$emailUserData['error_text'] = $error;
+						$this->AdminClientMarketingEmailUser->create();
+						$this->AdminClientMarketingEmailUser->save($emailUserData);
+					}
+					$this->Session->setFlash('Email sends successfully');
+					$this->redirect(array('action'=>'marketing_history_email'));
+				}
+				else
+				{
+					$this->Session->setFlash('Unable to send emails');
+				}
+			}
+			else
+			{
+				$this->Session->setFlash('Invalid request');
+			}			
+		}
+		else
+		{
+			$this->Session->setFlash('Invalid request');
+		}		
+		$this->redirect(array('action'=>'marketing_history_email'));
+	}
+}

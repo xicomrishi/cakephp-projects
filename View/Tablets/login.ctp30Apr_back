@@ -1,0 +1,60 @@
+<?php $bg = ($this->Session->read('Client.bg_color') != '')?$this->Session->read('Client.bg_color'):'';
+echo '<link href=\'http://fonts.googleapis.com/css?family=Maven+Pro:700\' rel=\'stylesheet\' type=\'text/css\'>'; ?>
+<div class="page-width" style="background:#fff">
+	<section class="content login-mn " style="background-color:#<?php echo ($bg != '')?$bg:'243A62';?>;">
+		<div class="row tCenter login-text">
+				
+			<?php if($deal['AdminClientDeal']['type'] == 1)
+				{
+			?>		
+					<h3>Login & Save</h3>
+					<h2>
+						
+						<?php 
+								echo $deal['AdminClientDeal']['price']. '% off '.$deal
+
+['AdminClientDeal']['product'];
+						?>
+					</h2>
+			<?php } else if($deal['AdminClientDeal']['type'] == 2) { ?>
+					<h3>Login & Save</h3>
+					<h2>
+						
+						<?php 
+								echo '$'.$deal['AdminClientDeal']['price'].' off '.$deal
+
+['AdminClientDeal']['product'];
+						?>
+					</h2>
+			<?php } else if($deal['AdminClientDeal']['type'] == 3) { ?>
+					<h3>Login & Save</h3>
+					<h2>
+						
+						<?php 
+								echo 'Buy One Get One Free '.$deal['AdminClientDeal']['product'];
+						?>
+					</h2>
+			<?php } else { ?>
+					<h3><?php if ($deal['AdminClientDeal']['product'] == 'Annual Business Expo') echo 'Free 
+
+Admission<br/>Login & Share!' ; else echo 'Login & Save!'; ?></h3>
+					<h2>
+						
+						<?php 
+								echo $deal['AdminClientDeal']['product'];
+						?>
+					</h2>
+			<?php } ?>
+		</div>
+		<div class="login-social row tCenter">
+			<?php echo $this->Html->link('&nbsp;', array('controller'=>'domain', 'action'=>'login', 
+
+'facebook','tab'), array('class'=>'fb')); ?>
+			
+			<?php echo $this->Html->link('&nbsp;', array('controller'=>'domain', 'action'=>'login', 'twitter','tab'), 
+
+array('class'=>'tw')); ?>
+		</div>
+	</section>
+</div>
+

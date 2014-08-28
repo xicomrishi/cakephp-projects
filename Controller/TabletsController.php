@@ -1,0 +1,1161 @@
+<?php
+
+App::uses('AppController', 'Controller');
+
+class TabletsController extends AppController {
+
+	public $uses = array();
+	public $components = array('Uploader');
+	var $layout = 'tablet';
+	
+	public function beforeFilter()
+	{
+		parent::beforeFilter();
+		
+		$this->Auth->loginAction = '/'.$this->Session->read('Client.tablet_url');
+		$this->Auth->loginRedirect = '/'.$this->Session->read('Client.tablet_url');
+	
+		/*$this->Auth->loginAction = array(
+			'controller' => 'tablets',
+			'action' => 'domain', $this->Session->read('Client.tablet_url')
+		);
+		$this->Auth->loginRedirect = array(
+			'controller' => 'tablets',
+			'action' => 'domain', $this->Session->read('Client.tablet_url')
+		);*/
+		$this->Auth->logoutRedirect = '/'.$this->Session->read('Client.tablet_url');
+		$this->Auth->allow(array('index','login', 'pagenotfound', 'api_login', 'checkLocation', 'exit_page', 'domain', 'share_cron', 'google_callback', 'redeem_coupon','post_message', 'facebook_fanpage_share'));
+    	$this->Cookie->time = 3600*24; 
+	}
+	
+	public function domain($tablet_url = null)
+	{	
+									
+		if(empty($tablet_url))
+		{
+			$tablet_url = $this->params['slug'];
+			/*if ( $tablet_url == 'pagenotfound')
+			{
+				$this->redirect(array('action' => 'pagenotfound'));
+			}*/
+		}	
+		if ( $this->Session->check('coupon_location_good') )
+		{
+			$coupon_location_good = 1;
+		}
+			
+		
+		if ( isset($coupon_location_good) )
+		{
+			$this->Session->write('coupon_location_good',1);
+		}
+			
+		$this->loadModel('Admin');		
+		
+		if (empty($tablet_url) && $this->Session->read('Client.tablet_url') != '') 
+		{
+			$tablet_url = $this->Session->read('Client.tablet_url');			
+		}
+		
+		if (empty($tablet_url) && $this->Cookie->read('App.Tablet.Url') != '') 
+		{
+			$tablet_url = $this->Cookie->read('App.Tablet.Url');			
+		}
+		
+		if(!empty($tablet_url))
+		{	
+			$user_data = $this->Admin->get_user_tab_data($tablet_url);			
+			
+			if (!empty($user_data))
+			{
+				$this->Cookie->write('App.Tablet.Url', $tablet_url);
+				$this->Session->write('Client', $user_data['Admin']);
+				$this->Session->write('ApplicationType', 'tab');				
+				
+				$this->set(compact('user_data'));
+			}
+			else 
+			{	
+				throw new NotFoundException('Invalid url or Your session has been expired');
+			}
+		}
+		else
+		{	
+			throw new NotFoundException('Invalid url or Your session has been expired');
+		}	
+	}
+
+	public function checkLocation()
+	{
+		$latitude = $this->data['latitude'];
+		$longitude = $this->data['longitude'];
+		
+		$distance = getDistance($this->Session->read('Client.latitude'), $this->Session->read('Client.longitude'), $latitude, $longitude);
+		if($distance < 0.1)
+		{
+			$this->Session->write('coupon_location_good','1');
+		}
+		echo $distance; die;		
+	}
+	
+	public function login($id = null)
+	{
+		$this->loadModel('AdminClientDeal');
+		$deal = $this->AdminClientDeal->find('first', array('conditions'=>array('id'=>$id, 'status'=>'active')));
+		
+		
+		if (!empty($deal))
+		{
+			$this->loadModel('Admin');
+			$admin = $this->Admin->find('first',array('conditions'=>array('Admin.id'=>$deal['AdminClientDeal']['user_id']),
+														'fields'=>array('Admin.login_page_text_1','Admin.bg_color','Admin.font_color','Admin.bg_texture')));
+			$this->Session->write('DealId', $id);	
+			$this->set('admin',$admin);		
+			$this->set(compact('deal'));
+		}
+		else 
+		{
+			throw new NotFoundException('No Deal found for this user.');
+		}	
+	}
+	
+	public function api_login()
+	{	
+		if(isset($this->request->params['ext']) && $this->request->params['ext'] == 'json' && !empty($this->request->data))
+		{
+			$username = $this->request->data['username'];
+			$password = $this->Auth->password($this->request->data['password']);
+			
+			try
+			{
+				$this->loadModel('Admin');
+				$user_details = $this->Admin->find('first', 
+					array(
+						'conditions'=>array(
+							'Admin.username'=>$username,
+							'Admin.password'=>$password
+						),
+						'fields'=>array(
+							'tablet_url','company'
+						)
+					)
+				);
+				
+				if(!empty($user_details))
+				{
+					$data['tablet_url'] = SITE_URL.$user_details['Admin']['tablet_url'];	
+					//$data['tablet_url'] = SITE_URL.'tablets/domain/'.$user_details['Admin']['tablet_url'];
+					$response = array('status'=>'ok', 'Message'=>'', 'data'=>$data);
+				}
+				else{
+					$response = array('status'=>'error', 'Message'=>'Invalid username or password.');
+				}
+			}
+			catch(Exception $e)
+			{
+				$response = array('status'=>'error', 'data'=>$e->getMessage());
+			}			
+		}
+		else {
+			$response = array('status'=>'error', 'Message'=>'Invalid request');
+		}
+		
+		echo json_encode($response);
+		exit;
+	}
+		
+	function share($deal_id = null)
+	{	
+		//Configure::write('debug',2);
+		$this->loadModel('AdminClientDeal');
+		$this->loadModel('Admin');
+		
+		if(!empty($this->request->data))
+		{
+			$this->loadModel('AdminClientDealShare');
+			$query = '';
+			$user_id = $this->Auth->user('id');
+			
+			$current_client_id = $this->Session->read('Client.id');
+			$current_deal_id = $this->Session->read('DealId');
+			$share_type = $this->Session->read('LoginType');
+			//echo $share_type; die;
+			$coupon_location = 'Valid';
+			if(!$this->Session->check('coupon_location_good'))
+			{
+				$coupon_location = 'Invalid';	
+			}
+
+			/*Coupon check code*/
+			$this->loadModel('UserCoupon');
+			$user_coupons = $this->UserCoupon->find('first', array('conditions' => array(
+																	'UserCoupon.user_id' => $this->Auth->user('id'), 
+																	'UserCoupon.client_id' => $this->Session->read('Client.id'),																	
+																	'UserCoupon.valid_till > ' => date('Y-m-d H:i:s'),
+																	'UserCoupon.status' => 'not used'
+																	)
+															)
+												);
+			
+			if ( !empty($user_coupons) )
+			{
+				$coupon_location = 'Invalid';	
+			}
+			
+			$friends = $share_type == 'facebook'?$this->Auth->user('fb_friends'):$this->Auth->user('tw_friends');
+			if(empty($friends)) {
+				$friends = 0;
+			}
+			$time_now = date('Y-m-d H:i:s');
+			$query .= "($user_id, $current_client_id, $current_deal_id, '$share_type', $friends, 'yes','pending', '".$coupon_location."', '$time_now', '$time_now'),";
+			
+			$query = rtrim($query,",");
+			$final_query = "INSERT into admin_client_deal_shares (user_id, client_id, deal_id, share_type, friend_count, is_primary, status, coupon_location, created, modified) VALUES $query"; 
+									
+			$this->AdminClientDealShare->query($final_query);
+			$this->Session->write('share_deal_id', $current_deal_id);
+			$this->redirect(array('controller'=>'tablets', 'action'=>'thank_you',$current_deal_id ));
+			
+		}
+
+		if(!empty($deal_id))
+		{
+		$deal = $this->AdminClientDeal->findDealById($deal_id);		
+		//echo '<pre>'; print_r($deal);
+		if(empty($deal))
+		{
+			throw new NotFoundException('No deal found.');
+		}
+		
+		if ( $this->Session->check('already_liked') )
+		{
+			$this->set('already_liked','1');
+			
+		}
+		
+		$slider_deal = $this->AdminClientDeal->clientAllDeal();	
+		
+		$client_details = $this->Admin->read('company, facebook_url, twitter_url, tablet_url, website_url, mobile', $this->Session->read('Client.id'));
+		
+		$user_data = $this->Admin->get_user_tab_data($client_details['Admin']['tablet_url']);
+		
+		$StatusMessage = new StatusMessage();
+			
+		$fb_message = $StatusMessage->fb_message($this->Auth->user(),$client_details['Admin'], $deal);
+		$tw_message = $StatusMessage->tw_message($this->Auth->user(),$client_details['Admin'], $deal);
+		$fb_fanpage_message = $StatusMessage->fb_fanpage_message($this->Auth->user(),$client_details['Admin'], $deal);
+		
+		$this->loadModel('AdminClientDealShare');
+		$share_count = $this->AdminClientDealShare->find('count', array('conditions' => array(
+																					'AdminClientDealShare.user_id' => $this->Auth->user('id'),
+																					'AdminClientDealShare.client_id' => $this->Session->read('Client.id'),
+																					'AdminClientDealShare.deal_id' => $deal_id,
+																					'used_for_coupon' => 'No',
+																					'coupon_location' => 'Valid')));
+		
+		$this->loadModel('Coupon');		
+		$available_coupon = $this->Coupon->find('first', array('conditions' => array('Coupon.client_id' => $this->Session->read('Client.id'), 
+																				'Coupon.deal_id' => $deal_id, 
+																				'Coupon.status' => 'Active')));	
+		if ( !empty($available_coupon) )
+		{
+			$this->set('coupon_count', $available_coupon['Coupon']['no_of_share']);
+		}																		
+		$this->set('share_count',$share_count);
+		$this->set('frontuser', $this->Session->read('Auth.User'));
+		$this->set(compact('deal', 'slider_deal', 'client_details', 'fb_message', 'tw_message', 'user_data'));
+		}else{
+			$this->redirect('/'.$this->Session->read('Client.tablet_url'));
+		}
+	}	
+	
+	
+	/**
+	 * Modified By: Vivek Sharma
+	 * Modification Date: 24 June, 2014
+	 * Comment: Modified to use admin own access token instead of our fixed access token  
+	 */
+	function facebook_fanpage_share($deal=NULL, $get_loggedIn_user=NULL, $fb_fanpage_message=NULL)
+	{	
+		App::uses('FB', 'Facebook.Lib');
+		$Facebook = new FB();
+		
+		$current_access_token = $Facebook->getAccessToken();
+		
+		$accessToken = $deal['Admin']['fb_page_access_token'];
+		$params = array('access_token' => $accessToken);
+		// Fan PAGE ID  
+		$fanpage = $deal['Admin']['fb_fanpage_id'];
+	
+		//Do Not Modify !!!
+		//$access_token = 'CAAH7E39u1FsBAEIkZBD9bn7BC43KyIZC1JlR8UFlglVYryu0xyYAYmSXlN4wROAO8oRZCYjFrQmUJb5FPUBvXgPqZBISCJJnb9NarKRRjRnURTRoeOsYluZB9UGFVmthlvZAuAIa4ljWtrDfZC7o3ZAmQZB5K0n0vGZAXAdxiNuNo3mSEPBYIcO5wCam7JZCQTTx9IZD';
+		
+		
+		//$accounts = $Facebook->api('/100004413962444/accounts', 'GET', $params);
+		$accounts = $Facebook->api('/'.$deal['Admin']['facebook_id'].'/accounts', 'GET', $params);
+		
+		foreach($accounts['data'] as $account) 
+		{
+			if( $account['id'] == $fanpage || $account['name'] == $fanpage )
+			{
+				
+				$fanpage_token = $account['access_token'];
+				
+				$Facebook->setAccessToken($fanpage_token);
+				$fanpage_album_name = $get_loggedIn_user['User']['first_name'].'_'.$get_loggedIn_user['User']['last_name'];							
+				$fanpage_album_details = array('message'=> 'Powered by https://eyesocialeyes.com/','name'=> $fanpage_album_name);
+				
+				if(!empty($get_loggedIn_user['User']['image']) && file_exists( PROFILE . $get_loggedIn_user['User']['image']))
+				{
+					$source_path = PROFILE . $get_loggedIn_user['User']['image'];
+				}
+				else
+				{
+					$source_path = DEFAULTIMAGE . '/no_image_available.jpg';
+				}
+				$fanpage_album = $Facebook->api('/'.$fanpage.'/albums', 'post', $fanpage_album_details);
+				
+				$fanpage_album_id = $fanpage_album['id'];
+				
+				$args = array(
+					'message' => $fb_fanpage_message,
+					'src' => '@'. $source_path,
+					'aid' => $fanpage_album_id,
+					'access_token'=>$fanpage_token
+				);									    
+				
+				$Facebook->setFileUploadSupport(true);
+				$code = $Facebook->api('/'.$fanpage_album_id.'/photos', 'POST', $args );
+				$Facebook->setAccessToken($fanpage_token);										
+			}
+		}
+		 return true;
+	}
+	function thank_you()
+	{	
+		$this->loadModel('AdminClientDeal');
+		
+		if (!empty($this->request->data['MultiShare']['ids']) && $this->request->is('Ajax'))
+		{
+			$deal_ids = $this->request->data['MultiShare']['ids'];
+			$user_id = $this->Auth->user('id');
+			$share_type = $this->Session->read('LoginType');
+			$friends = $this->Session->read('LoginType') == 'facebook'?$this->Auth->user('fb_friends'):$this->Auth->user('tw_friends');
+			if(empty($friends)) {
+				$friends = 0;
+			}
+			$query='';
+			
+			$coupon_loc = 'Invalid';
+			
+			/*if($this->Session->check('coupon_location_good'))
+			{
+				$coupon_loc = 'Valid';	
+			}*/
+			
+			foreach($deal_ids as $id)
+			{
+				list($deal_id, $client_id) = explode("-", $id);	
+				$time_now = date('Y-m-d H:i:s');
+				$query .= "($user_id, $client_id, $deal_id, '$share_type', $friends, 'no','pending', '$coupon_loc','$time_now', '$time_now'),";
+			}
+			
+			$query = rtrim($query,",");
+			$final_query = "INSERT into admin_client_deal_shares (user_id, client_id, deal_id, share_type, friend_count, is_primary, status, coupon_location ,created, modified) VALUES $query";  
+			$this->loadModel('AdminClientDealShare');
+			$this->AdminClientDealShare->query($final_query);
+			exit;
+		}
+		
+		$deal_id = $this->Session->read('DealId');
+		$login_type = $this->Session->read('LoginType');
+		$share_deal_id = $this->Session->read('share_deal_id');
+		$deal = $this->AdminClientDeal->findDealById($deal_id);			
+			
+		$user_data = array();
+		$user_data['Admin'] = $this->Session->read('Client');
+		$slider_deal = $this->AdminClientDeal->clientAllDeal();
+		
+		/*Coupon check code*/
+		$this->loadModel('UserCoupon');
+		$user_coupons = $this->UserCoupon->find('first', array('conditions' => array(
+																	'UserCoupon.user_id' => $this->Auth->user('id'), 
+																	'UserCoupon.client_id' => $this->Session->read('Client.id'),																	
+																	'UserCoupon.valid_till > ' => date('Y-m-d H:i:s'),
+																	'UserCoupon.status' => 'not used'
+																	)
+															)
+												);
+		
+		$this->loadModel('AdminClientDealShare');
+		$share_count = $this->AdminClientDealShare->find('count', array('conditions' => array(
+																					'AdminClientDealShare.user_id' => $this->Auth->user('id'),
+																					'AdminClientDealShare.client_id' => $this->Session->read('Client.id'),
+																					'AdminClientDealShare.deal_id' => $deal_id,
+																					'used_for_coupon' => 'No',
+																					'coupon_location' => 'Valid')));
+		
+		$this->loadModel('Coupon');																			
+		$available_coupon = $this->Coupon->find('first', array('conditions' => array('Coupon.client_id' => $this->Session->read('Client.id'), 
+																				'Coupon.deal_id' => $deal_id, 
+																				'Coupon.status' => 'Active')));	
+		if ( !empty($available_coupon) )
+		{
+			$this->set('coupon_count', $available_coupon['Coupon']['no_of_share']);
+		}																			
+		
+																				
+		$this->set('share_count',$share_count);
+		
+		
+		if($this->Session->check('coupon_location_good'))
+		{
+		if ( !empty($user_coupons) )
+		{
+			$this->loadModel('Coupon');
+			$coupon = $this->Coupon->find('first', array('conditions' => array('Coupon.id' => $user_coupons['UserCoupon']['coupon_id'],'Coupon.deal_id' => $deal_id)));
+			
+			if ( !empty($coupon) )
+			{
+				$this->set('coupon', $coupon);
+				$this->set('user_coupon_details', $user_coupons);
+			}
+			
+			
+		}else{
+			
+					
+			$this->loadModel('Coupon');
+			
+			$flag = 0;  
+			$available_coupon = $this->Coupon->find('first', array('conditions' => array('Coupon.client_id' => $this->Session->read('Client.id'), 
+																				'Coupon.deal_id' => $deal_id, 
+																				'Coupon.status' => 'Active')));	
+		
+			if ( !empty($available_coupon) )
+			{
+				/*Check if any coupon was redeemed in last 24 hours. Only 1 coupon will be generated per day.*/
+				$last_redeemed =  $this->UserCoupon->find('first', array('conditions' => array(
+																	'UserCoupon.user_id' => $this->Auth->user('id'), 
+																	'UserCoupon.client_id' => $this->Session->read('Client.id'),
+																	'UserCoupon.status' => 'used'
+																	),
+																	'order' => array('UserCoupon.redeemed_on' => 'desc')
+															)
+												);
+				$go_flag = 0;								
+				if ( !empty($last_redeemed) )
+				{
+					$diff = strtotime(date('Y-m-d H:i:s')) - strtotime($last_redeemed['UserCoupon']['redeemed_on']);
+					if (  $diff < 86400 )
+						$go_flag = 1;
+				}
+				
+				if ( $go_flag == 0)
+				{
+					$coupon = $available_coupon;
+					if ( $share_count >= $coupon['Coupon']['no_of_share'])
+					{				
+					
+						$query = "update admin_client_deal_shares set used_for_coupon = 'Yes' 
+												where user_id = '".$this->Auth->user('id')."' and 
+														client_id = '".$this->Session->read('Client.id')."' and 
+														deal_id = '".$deal_id."' and
+														used_for_coupon = 'No' and coupon_location = 'Valid' LIMIT ".$coupon['Coupon']['no_of_share'];
+						
+						$this->AdminClientDealShare->query($query);
+						
+						$cur_date = date('Y-m-d H:i:s');
+						$validity = date('Y-m-d H:i:s',strtotime($cur_date) + $coupon['Coupon']['valid_for']*60*60);
+						
+						$code = strtoupper(substr($this->Session->read('Client.tablet_url'),0,4).$this->Auth->user('id').generateRandStr(4));
+						
+						
+											  
+					
+						
+						$arr = array('user_id' => $this->Auth->user('id'),
+									 'client_id' => $this->Session->read('Client.id'),
+									 'coupon_id' => $coupon['Coupon']['id'],
+									 'code' => $code,
+									 'created' => date('Y-m-d H:i:s'),
+									 'status' => 'not used',
+									 'valid_till' => $validity);
+						
+						$this->loadModel('UserCoupon');
+						$this->UserCoupon->create();
+						$coupon_details = $this->UserCoupon->save($arr);			 
+						
+						/*Generate QR Code*/
+						App::import('Vendor',array('phpqrcode/qrlib'));
+				
+						$tempDir = QRCODES;
+						$fileName = 'coupon_'.$coupon_details['UserCoupon']['id'].'.png';
+						$codeContents = SITE_URL.'tablets/redeem_coupon/'.$code;
+						QRcode::png($codeContents, $tempDir.$fileName, QR_ECLEVEL_L, 6, 7);
+						
+						$this->UserCoupon->id = $coupon_details['UserCoupon']['id'];
+						$user_coupon_details = $this->UserCoupon->save(array('qr_image' => $fileName));
+						
+						$coupon_details['UserCoupon']['qr_image'] = $fileName;
+										
+						$this->set('coupon', $coupon);
+						$this->set('user_coupon_details', $coupon_details);
+						
+					}
+				 }
+				
+			}																					
+			
+			
+			}	
+		}			
+		
+		$this->set(compact('deal', 'slider_deal', 'login_type', 'share_deal_id', 'user_data'));
+	}
+
+
+	public function redeem_coupon_code()
+	{
+		$code = $this->data['code'];
+		$user_code = $this->data['user_code'];
+		if(!empty($code))
+		{
+			$this->loadModel('UserCoupon');
+			$this->loadModel('Coupon');
+			
+			if(!empty($code))
+			{
+				/*Check if user entered valid general coupon*/
+				$general_coupon = $this->Coupon->findByCouponCode(strtoupper(trim($code)));
+				
+				$this->UserCoupon->bindModel(array('belongsTo' => array('Coupon' => array('className' => 'Coupon', 'foreignKey' => 'coupon_id'))));
+				
+				if ( !empty($general_coupon) )
+				{
+					/*find user oupon from general coupon*/
+					$coupon = $this->UserCoupon->findByCode(strtoupper(trim($user_code)));
+					
+					if(!empty($coupon))
+						{
+							if($coupon['UserCoupon']['status'] == 'not used')
+							{
+								if($coupon['UserCoupon']['valid_till'] >= date('Y-m-d H:i:s') )
+								{
+									$this->UserCoupon->id = $coupon['UserCoupon']['id'];
+									$this->UserCoupon->save(array('status' => 'used', 'redeemed_on' => date('Y-m-d H:i:s')));
+									echo 'Coupon redeemed successfully'; die;
+								}else{
+									echo 'Coupon expired'; die;
+								}
+							}else{
+								echo 'Coupon already redeemed'; die;	
+							}
+						}else{
+							echo 'Invalid coupon code'; die;
+						}
+				
+				}else{		
+					
+				
+					if(!empty($code))
+					{
+						/*check if user entered user specific coupon*/
+						$coupon = $this->UserCoupon->findByCode(strtoupper(trim($code)));
+						
+						if(!empty($coupon))
+						{
+							if($coupon['UserCoupon']['status'] == 'not used')
+							{
+								if($coupon['UserCoupon']['valid_till'] >= date('Y-m-d H:i:s') )
+								{
+									$this->UserCoupon->id = $coupon['UserCoupon']['id'];
+									$this->UserCoupon->save(array('status' => 'used', 'redeemed_on' => date('Y-m-d H:i:s')));
+									echo 'Coupon redeemed successfully'; die;
+								}else{
+									echo 'Coupon expired'; die;
+								}
+							}else{
+								echo 'Coupon already redeemed'; die;	
+							}
+						}else{
+							echo 'Invalid coupon code'; die;
+						}
+						
+					}else{
+						echo 'Invalid coupon code'; die;
+					}
+				}
+				
+			}else{
+				echo 'Invalid coupon code'; die;
+			}
+		}else{
+				echo 'Invalid coupon code'; die;
+		}
+	}
+
+	
+	 
+	function post_message()
+	{
+		//Configure::write('debug',2);
+		$share_deal_id = $this->Session->read('share_deal_id');		
+		
+		if(!empty($share_deal_id) && !empty($this->request->data))
+		{
+			$id = $this->request->data['id'];
+			$this->loadModel('AdminClientDealShare');
+			$this->AdminClientDealShare->bindModel(array(
+					'belongsTo'=>array(
+						'Admin'=>array(
+							'className'=>'Admin',
+							'foreignKey'=>'client_id',
+							'fields'=>array(
+								'id', 'first_name', 'last_name', 'email', 'company', 'website_url', 'fb_page_access_token', 'twitter_url', 'tablet_url', 'facebook_id' ,'fb_fanpage_id', 'mobile'
+							)
+						),
+						'AdminClientDeal'=>array(
+							'className'=>'AdminClientDeal',
+							'foreignKey'=>'deal_id',
+							'fields'=>array(
+								'title', 'description', 'price', 'image', 'type', 'product','is_custom_post_message','fb_post_message', 'tw_post_message', 'fanpage_message'
+							)
+						),
+						'User'=>array(
+							'className'=>'User',
+							'foreignKey'=>'user_id',
+							'fields'=>array(
+								'first_name', 'last_name', 'email', 'fb_id', 'fb_access_token', 'fb_friends', 'tw_id', 'tw_screen_name', 'tw_oauth_token',
+								'tw_oauth_token_secret', 'tw_friends', 'image'
+							)
+						)
+					)
+				)
+			);
+				
+			$share = $this->AdminClientDealShare->find('first', 
+												array(
+													'conditions'=>array(
+														'AdminClientDealShare.status'=>'pending',
+														'AdminClientDealShare.deal_id'=>$id,
+														'AdminClientDealShare.is_primary'=>'yes',
+														'AdminClientDealShare.user_id'=>$this->Auth->user('id')
+													)												
+												)
+											);
+			//pr($share); //die;
+			if(!empty($share))
+			{
+				App::uses('FB', 'Facebook.Lib');
+				$Facebook = new FB();
+				App::import('Vendor', 'twitter/tmhOAuth');
+				$StatusMessage = new StatusMessage();
+			
+				
+				$get_loggedIn_user['User'] = $share['User'];	
+				
+				$deal['AdminClientDeal'] = $share['AdminClientDeal'];
+				$deal['Admin'] = $share['Admin'];	
+				
+				if(!empty($deal))
+				{	
+					$fb_message = $StatusMessage->fb_message($share['User'], $deal['Admin'], $deal);
+					$tw_message = $StatusMessage->tw_message($share['User'], $deal['Admin'], $deal);
+					$fb_fanpage_message = $StatusMessage->fb_fanpage_message($share['User'], $deal['Admin'], $deal);
+					
+					$img = dirname(dirname(__FILE__)).DS.'webroot'.DS.'img'.DS.'deal'.DS.$deal['AdminClientDeal']['image'];
+					
+					if($share['AdminClientDealShare']['share_type'] == 'facebook')
+					{	
+						$Facebook->setAccessToken($get_loggedIn_user['User']['fb_access_token']);
+						$album_name = $deal['Admin']['company'].'_'.$deal['AdminClientDeal']['title'];							
+						$album_details = array('message'=> 'Powered by https://eyesocialeyes.com/','name'=> $album_name);
+						$album = $Facebook->api('/'.$get_loggedIn_user['User']['fb_id'].'/albums', 'post', $album_details);
+						$album_id = $album['id'];
+						
+						$msg_body = array(
+							'source'=>'@' . $img,
+							'message' => $fb_message ,
+							'aid' => $album_id,
+						);	
+						
+						$check = $Facebook->api('/'.$album_id.'/photos', 'POST', $msg_body );
+						
+						if($check)
+						{	
+							$dealShare['AdminClientDealShare']['id'] = $share['AdminClientDealShare']['id'];							
+							$dealShare['AdminClientDealShare']['status'] = 'posted';
+							$this->AdminClientDealShare->save($dealShare);
+
+																		
+							if(!empty($deal['Admin']['fb_fanpage_id']))
+							{
+								$this->facebook_fanpage_share($deal, $get_loggedIn_user, $fb_fanpage_message);
+							}
+							// Send coupon Email to user
+							
+							$this->coupon_email($img, $deal, $get_loggedIn_user['User']);									
+						}
+					}
+					else if($share['AdminClientDealShare']['share_type'] == 'twitter')
+					{	
+						$tmhOAuth = new tmhOAuth(array(
+							  'consumer_key' => LoginAPI::TWITTER_CONSUMER_KEY,
+							  'consumer_secret' => LoginAPI::TWITTER_CONSUMER_SECRET,
+							  'token' => $get_loggedIn_user['User']['tw_oauth_token'],
+							  'secret' => $get_loggedIn_user['User']['tw_oauth_token_secret']		  
+							)
+						);								
+						// Remove characters from message as twiiter has the limit for characters
+						$msg = substr($tw_message, 0, 120);				
+						$params = array(
+									'media[]' => '@'.$img,
+									'status'  => $msg,
+									
+								  );
+						$code = $tmhOAuth->user_request(array(
+															'method' => 'POST',
+															'url' => $tmhOAuth->url("1.1/statuses/update_with_media"),
+															'params' => $params,
+															'multipart' => true	
+														)
+													);
+						if($code != 403)
+						{	
+							$dealShare['AdminClientDealShare']['id'] = $share['AdminClientDealShare']['id'];							
+							$dealShare['AdminClientDealShare']['status'] = 'posted';
+							$this->AdminClientDealShare->save($dealShare);
+									
+							if(!empty($deal['Admin']['fb_fanpage_id']))
+							{	
+								$this->facebook_fanpage_share($deal, $get_loggedIn_user, $fb_fanpage_message);							
+							}	
+							// Send coupon Email to user
+							$this->coupon_email($img, $deal, $get_loggedIn_user['User']);
+						}		  
+					} 
+				}				
+			}
+			$this->Session->delete('share_deal_id');
+		}
+		exit;
+	}
+	function exit_page($num=0)
+	{
+		$this->loadModel('AdminClientDeal');
+		$this->loadModel('Setting');
+		$login_type = $this->Session->read('LoginType');
+		
+		$logout_image = $this->Setting->find('first', array(
+								'fields'=>'image'
+							)
+						);
+		$user_data = array();
+		$user_data['Admin'] = $this->Session->read('Client');
+		$slider_deal = $this->AdminClientDeal->clientAllDeal();
+		$this->set('num', $num);
+		//$this->Session->delete('coupon_location_good');    // delete user location check session
+		//print_r($user_data); die;
+		
+		if($this->Session->check('fb_user_email'))
+		{
+			$this->loadModel('User');
+			$exists_user = $this->User->findByEmail($this->Session->read('fb_user_email'));
+			$this->Session->delete('fb_user_email');
+			if(!empty($exists_user))
+			{
+				$this->set('user',$exists_user);
+			}
+		}
+		
+		
+		$this->set(compact('logout_image', 'slider_deal', 'login_type', 'user_data'));
+	}
+	
+	function coupon_email($attachment = NULL, $client=NULL, $user=NULL)
+	{		
+		$this->loadModel('AdminClientDealEmail');
+		
+		$adminClientDeal = $this->AdminClientDealEmail->find('first',array('conditions'=>array('client_id'=>$client['Admin']['id'])));
+		
+		if(!empty($adminClientDeal))
+		{
+			$path_parts = pathinfo($attachment);
+			$size = getimagesize($attachment);	
+			$arr_keys = array('{first_name}','{last_name}','{deal_title}');
+			$arr_values = array($user['first_name'],$user['last_name'],$client['AdminClientDeal']['title']);
+
+			$email_content = str_replace($arr_keys, $arr_values, $adminClientDeal['AdminClientDealEmail']['content']);
+			
+			$email = new CakeEmail('smtp'); 		
+			$email->from(array($adminClientDeal['AdminClientDealEmail']['from_email']=>$adminClientDeal['AdminClientDealEmail']['from_name']));
+			if(isset($adminClientDeal['AdminClientMarketingEmail']['reply_to']) && !empty($adminClientDeal['AdminClientMarketingEmail']['reply_to']))
+			{
+				$email->replyTo($adminClientDeal['AdminClientMarketingEmail']['reply_to']);
+			}
+			$email->to($user['email']);
+			$email->subject($adminClientDeal['AdminClientDealEmail']['subject']);
+			$email->emailFormat('html');
+			$email->attachments(array(
+					$path_parts['basename'] => array(
+						'file' => $attachment,
+						/*'mimetype' => $size['mime'],
+						'contentId' => 'my-unique-id'*/
+					)
+				));
+			if ($email->send($email_content)) {
+				$res = 'yes';
+			} else {
+				$res =  $this->Email->smtpError;
+			}
+		}
+		else
+		{
+			$path_parts = pathinfo($attachment);
+			$size = getimagesize($attachment);	
+			
+			$email = new CakeEmail('smtp'); 		
+			$email->from(array('xicomtest10@gmail.com'=>'SocialReferral'));
+			$email->to($user['email']);
+			$email->subject('Your '.$client['Admin']['company']. ' coupon');
+			$email->viewVars(array ('client' => $client, 'user'=> $user));		
+			$email->template('share', 'default');
+			$email->emailFormat('html');
+			$email->attachments(array(
+					$path_parts['basename'] => array(
+						'file' => $attachment,
+						'mimetype' => $size['mime'],
+						'contentId' => 'my-unique-id'
+					)
+				));
+			if ($email->send()) {
+				$res = 'yes';
+			} else {
+				$res =  $this->Email->smtpError;
+			}
+		}
+		return $res;
+		
+	}
+	/*
+	function coupon_email($attachment = NULL, $client=NULL, $user=NULL)
+	{
+		$path_parts = pathinfo($attachment);
+		$size = getimagesize($attachment);	
+		
+		$email = new CakeEmail('smtp'); 		
+		$email->from(array('xicomtest10@gmail.com'=>'SocialReferral'));
+		$email->to($user['email']);
+		$email->subject('Your '.$client['Admin']['company']. ' coupon');
+		$email->viewVars(array ('client' => $client, 'user'=> $user));		
+		$email->template('share', 'default');
+		$email->emailFormat('html');
+		$email->attachments(array(
+				$path_parts['basename'] => array(
+					'file' => $attachment,
+					'mimetype' => $size['mime'],
+					'contentId' => 'my-unique-id'
+				)
+			));
+		
+		if ($email->send()) {
+			$res = 'yes';
+		} else {
+			$res =  $this->Email->smtpError;
+		}
+		return $res;
+		
+	}*/
+	
+	function share_cron()
+	{	
+		set_time_limit(0);	
+		$this->loadModel('AdminClientDealShare');
+		
+		$this->AdminClientDealShare->bindModel(array(
+				'belongsTo'=>array(
+					'Admin'=>array(
+						'className'=>'Admin',
+						'foreignKey'=>'client_id',
+						'fields'=>array(
+							'first_name', 'last_name', 'email', 'company', 'website_url', 'twitter_url', 'tablet_url', 'fb_fanpage_id', 'mobile'
+						)
+					),
+					'AdminClientDeal'=>array(
+						'className'=>'AdminClientDeal',
+						'foreignKey'=>'deal_id',
+						'fields'=>array(
+							'title', 'description', 'price', 'image', 'type', 'product'
+						)
+					),
+					'User'=>array(
+						'className'=>'User',
+						'foreignKey'=>'user_id',
+						'fields'=>array(
+							'first_name', 'last_name', 'email', 'fb_id', 'fb_access_token', 'fb_friends', 'tw_id', 'tw_screen_name', 'tw_oauth_token',
+							'tw_oauth_token_secret', 'tw_friends', 'image'
+						)
+					)
+				)
+			)
+		);
+				
+		$share_pending_deals = $this->AdminClientDealShare->find('all', 
+											array(
+												'conditions'=>array(
+													'AdminClientDealShare.status'=>'PENDING'
+												)												
+											)
+										);
+		//pr($share_pending_deals);die;
+		if(!empty($share_pending_deals))
+		{
+			App::uses('FB', 'Facebook.Lib');
+			$Facebook = new FB();
+			App::import('Vendor', 'twitter/tmhOAuth');
+			$StatusMessage = new StatusMessage();
+		
+			foreach($share_pending_deals as $share)
+			{
+				$get_loggedIn_user['User'] = $share['User'];	
+				
+				$deal['AdminClientDeal'] = $share['AdminClientDeal'];
+				$deal['Admin'] = $share['Admin'];	
+				
+				if(!empty($deal))
+				{	
+					$fb_message = $StatusMessage->fb_message($share['User'],$deal['Admin'], $deal);
+					$tw_message = $StatusMessage->tw_message($share['User'],$deal['Admin'], $deal);
+					$fb_fanpage_message = $StatusMessage->fb_fanpage_message($share['User'], $deal['Admin'], $deal);
+					
+					//$img = realpath('./img/deal/'.$deal['AdminClientDeal']['image']);
+					 $img = dirname(dirname(__FILE__)).DS.'webroot'.DS.'img'.DS.'deal'.DS.$deal['AdminClientDeal']['image'];
+					
+					try{
+						
+						if($share['AdminClientDealShare']['share_type'] == 'facebook')
+						{	
+							$Facebook->setAccessToken($get_loggedIn_user['User']['fb_access_token']);
+							$album_name = $deal['Admin']['company'].'_'.$deal['AdminClientDeal']['title'];							
+							$album_details = array('message'=> 'Powered by https://eyesocialeyes.com/','name'=> $album_name);
+							$album = $Facebook->api('/'.$get_loggedIn_user['User']['fb_id'].'/albums', 'post', $album_details);
+							$album_id = $album['id'];
+							
+							$msg_body = array(
+								'source'=>'@' . $img,
+								'message' => $fb_message ,
+								'aid' => $album_id,
+							);	
+							
+							$check = $Facebook->api('/'.$album_id.'/photos', 'POST', $msg_body );
+							//pr($check);die;
+							if($check)
+							{	
+								$dealShare['AdminClientDealShare']['id'] = $share['AdminClientDealShare']['id'];							
+								$dealShare['AdminClientDealShare']['status'] = 'posted';
+								$this->AdminClientDealShare->save($dealShare);
+																				
+								if(!empty($deal['Admin']['fb_fanpage_id']))
+								{
+									$this->facebook_fanpage_share($deal, $get_loggedIn_user, $fb_fanpage_message);
+								}
+								// Send coupon Email to user
+								$this->coupon_email($img, $deal, $get_loggedIn_user['User']);									
+							}
+						}
+						else if($share['AdminClientDealShare']['share_type'] == 'twitter')
+						{	
+							$tmhOAuth = new tmhOAuth(array(
+								  'consumer_key' => LoginAPI::TWITTER_CONSUMER_KEY,
+								  'consumer_secret' => LoginAPI::TWITTER_CONSUMER_SECRET,
+								  'token' => $get_loggedIn_user['User']['tw_oauth_token'],
+								  'secret' => $get_loggedIn_user['User']['tw_oauth_token_secret']		  
+								)
+							);								
+							// Remove characters from message as twiiter has the limit for characters
+							$msg = substr($tw_message, 0, 110);				
+							$params = array(
+										'media[]' => '@'.$img,
+										'status'  => $msg,
+										
+									  );
+							
+							$code = $tmhOAuth->user_request(array(
+																'method' => 'POST',
+																'url' => $tmhOAuth->url("1.1/statuses/update_with_media"),
+																'params' => $params,
+																'multipart' => true	
+															)
+														);
+						
+							if($code != 403)
+							{	
+								$dealShare['AdminClientDealShare']['id'] = $share['AdminClientDealShare']['id'];							
+								$dealShare['AdminClientDealShare']['status'] = 'posted';
+								$this->AdminClientDealShare->save($dealShare);
+										
+								if(!empty($deal['Admin']['fb_fanpage_id']))
+								{	
+									$this->facebook_fanpage_share($deal, $get_loggedIn_user, $fb_fanpage_message);							
+								}	
+								// Send coupon Email to user
+								$this->coupon_email($img, $deal, $get_loggedIn_user['User']);
+							}		  
+						}
+						
+					}catch(Exception $e){
+						
+					} 
+					 
+					 
+				}
+			}
+		}
+		exit();
+	}
+	
+	/**
+	 * Will be used as google callback isntead of domain one 
+	 */
+	function google_callback()
+	{		
+		App::import('Vendor', 'Google/src/Google_Client');
+		App::import('Vendor', 'Google/src/contrib/Google_Oauth2Service');
+	
+		$client = new Google_Client();
+		$client->setApplicationName("Google UserInfo PHP Starter Application");
+		
+		$client->setClientId(LoginApi::GOOGLE_CLIENT_ID);
+		$client->setClientSecret(LoginApi::GOOGLE_CLIENT_SECRET);
+		$client->setRedirectUri(LoginApi::GOOGLE_CALLBACK_URL);
+		$client->setDeveloperKey(LoginApi::GOOGLE_DEVELOPER_KEY);
+		$oauth2 = new Google_Oauth2Service($client);	
+		
+		$acess_token = $client->authenticate($_GET['code']);
+		$client->setAccessToken($acess_token);	
+		
+		$user = $oauth2->userinfo->get();
+		
+		if ( $user )
+		{		
+			//Email id exists or not
+			if( !empty($user['email']))
+			{
+				$this->loadModel('User');
+				$exists_user = $this->User->findByEmail($user['email']);
+				
+				$application_type = $this->Session->read('ApplicationType');
+				$deal_id = $this->Session->read('DealId');
+				
+				if ( $this->Auth->user('id') )
+				{				
+					$this->User->id = $this->Auth->user('id');
+					$this->User->saveField('google_id', $user['id']);
+					
+					$this->Session->write('LoginType', 'google');	
+					
+					$this->redirect( array( 'controller' => 'websites', 'action' => 'profile' ) );
+				}
+				else
+				{
+					$image = '';
+					
+					$data = array(
+								'first_name'=> $user['given_name'],
+								'last_name' => $user['family_name'],
+								'username'  => $user['given_name'].$user['family_name'],
+								'email' => $user['email'],
+								'google_id' => $user['id'],
+								'image'=> $image
+							); 
+							
+					if ( $exists_user )
+					{
+						$data['id'] = $exists_user['User']['id'] ;
+						$this->User->validate = array();
+						$user = $this->User->save($data);
+					}
+					else
+					{									
+						$data['password'] 		= 	$this->Auth->password( $user['given_name'].$user['id'] );						
+						$data['status'] 		= 	UserDeinedStatus::Active ;						
+						$this->User->validate = array();
+						$user = $this->User->save($data);	
+					}
+					
+					// For autologin functionality we have to add data on Cake::Request then only auth component works					
+					if ( !empty($exists_user['User']['id']) )
+					{
+						$this->Auth->login( $exists_user['User'] );
+					}
+					else
+					{
+						$this->Auth->login($user['User']);
+					}
+					
+					if ( $this->Auth->login() )
+					{	
+						$this->Session->write('LoginType', 'google');	
+							
+						$this->redirect( array( 'controller' => 'websites', 'action' => 'profile' ) );
+					}
+					else
+					{
+						// Redirect
+						$this->flash_new( __('Unable Login with google. Please try again'), 'error-messages' );		
+						$this->check_auth();						
+					}
+				}								
+			}
+			else
+			{						
+				// Redirect	
+				$this->flash_new( __('Request can not be completed'), 'error-messages' );			
+				$this->check_auth();
+			}			
+		}
+		
+	}
+	
+	/**
+	 * name : redeem_coupon
+	 * Purpose : redeem coupon
+	 * author : Vivek Sharma
+	 * Created : 18 July 2014
+	 */
+	public function redeem_coupon($code = null)
+	{
+		if ( !empty($code) )
+		{
+			$this->loadmodel('UserCoupon');
+			$coupon = $this->UserCoupon->find('first', array('conditions' => array('UserCoupon.code' => $code, 'UserCoupon.status' => 'not used')));
+			
+			if ( !empty($coupon) )
+			{
+				if ( $coupon['UerCoupon']['valid_till'] <= date('Y-m-d H:i:s') )
+				{
+					$this->UserCoupon->id = $coupon['UserCoupon']['id'];
+					$this->UserCoupon->save(array('status' => 'used', 'redeemed_on' => date('Y-m-d H:i:s')));
+					echo 'Coupon redeemed';
+				}else{
+					
+					$this->UserCoupon->id = $coupon['UserCoupon']['id'];
+					$this->UserCoupon->save(array('status' => 'expired'));
+					echo 'Coupon expired'; 
+				}
+				
+			}else{
+				echo 'Invalid request';
+			}	
+			 die;
+		}
+	}
+	
+	public function pagenotfound()
+	{
+		$this->layout = 'error';
+		$this->render('error400');
+	}
+	
+}

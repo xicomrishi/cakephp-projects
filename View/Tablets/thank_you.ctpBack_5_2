@@ -1,0 +1,357 @@
+<?php 
+		echo $this->Html->script(array('jquery.bxslider.js'));
+		echo '<link href=\'https://fonts.googleapis.com/css?family=Maven+Pro:500\' rel=\'stylesheet\' type=\'text/css\'>';
+?>
+
+<script type="text/javascript">
+	$(document).ready(function() {
+		
+		<?php if(!empty($share_deal_id)) { ?>		
+			$.ajax({
+					url:SITE_URL+'tablets/post_message',
+					type:'POST',
+					data : {'id':'<?php echo $share_deal_id;?>'},				
+					success: function(){
+						
+					}
+			});
+		<?php } ?>
+		$('.bxslider').bxSlider({
+			minSlides: 1,
+			maxSlides: 2,
+			slideWidth: 440,
+			slideMargin: 13,
+			/*infiniteLoop:false*/
+		});
+		$('.bxslider2').bxSlider({
+			minSlides: 1,
+			maxSlides: 2,
+			slideWidth: 325,
+			slideMargin: 20,
+			autoHover : true,
+			infiniteLoop:false,
+			moveSlides:2,
+			
+		});
+		
+		
+		$(document).on('click',".alt-d", function(){
+			if($(this).is(":checked"))
+			{
+				$(this).parent().parent().addClass('grey-bg');
+			}
+			else
+			{
+				$(this).parent().parent().removeClass('grey-bg');
+			}
+		});
+		
+		$('#overlay ,.close').click(function(e) {
+			$('#overlay').fadeOut();
+			$('.index-popup').fadeOut();
+			e.preventDefault();
+		});
+		
+		$(document).on("click", ".share-more-deals", function(){
+			
+			if($(".alt-d").is(':checked') === true)
+			{
+				$.ajax({
+						url:SITE_URL+'tablets/thank_you',
+						type:'POST',
+						data : $("#share").serialize(),				
+						beforeSend : function(){
+							$('#overlay').fadeOut();
+							$('.index-popup').fadeOut();
+						},
+						success: function(){}
+				});
+			}
+			else
+			{
+				$(".error").text("Please select at-least one deal to be share.");
+			}	
+			
+		});
+		
+		$(".gry").on('click', function(){	
+			OSName = '';
+			if (navigator.platform.indexOf("iPad") != -1 || navigator.platform.indexOf("iPhone") != -1 || navigator.platform.indexOf("iPod") != -1) { OSName = "MacOS"	}
+			
+			window.location.href = '<?php echo SITE_URL.'domain/logout/tab'; ?>';			
+			Android.logout();
+			/*if(OSName == 'MacOS')
+			{
+				window.location = 'socialreferral://logout';
+			}
+			else
+			{
+				Android.logout();
+			}*/
+	
+		});
+	});
+</script>
+
+<div class="page-width">
+	<div class="container-inner">
+	<header class="header">
+		<figure class="profile-pic">
+			<div class="profile-div">
+				<div class="profile-img-area">
+					<?php 							
+							if(!empty($loggedInUser['User']['image']) && file_exists(PROFILE.$loggedInUser['User']['image']))
+							{
+								echo $this->Html->image(PROFILEURL.$loggedInUser['User']['image'], array('alt'=>'loading image'));
+							}
+							else
+							{
+								echo $this->Html->image('no_image_available.jpg', array('alt'=>'loading image'));
+							}					
+					?>
+				</div>
+			</div>
+			<figcaption>
+				<?php 				
+						$username = trim($loggedInUser['User']['first_name']).' '.trim($loggedInUser['User']['last_name']); 
+						$username = rtrim($username, " ");
+				?>
+				Thank you very much <strong><?php echo $username;?></strong>. Please show this coupon to the receptionist to receive your discount. You have been automatically logged out. Please click to Exit to start a fresh session.
+			</figcaption>
+		</figure>
+		<div class="clear"></div>
+	</header>
+	<section class="content thanks-page">
+		<ul class="steps  exit-step">                 
+			  <li>
+				<em></em>
+				<span class="step-shape">
+					<?php echo $this->Html->link('Exit', 'javascript:void(0);',array( 'class'=>'gry')); ?>
+					
+				</span>
+			</li>
+		</ul>
+		<figure class="save-visit exit-figure">	
+			<?php 
+					
+					if(!empty($deal['AdminClientDeal']['image']) && file_exists(DEAL.$deal['AdminClientDeal']['image']))
+					{
+						echo $this->Html->image(DEALURL.$deal['AdminClientDeal']['image'], array('alt'=>'thank you', 'class'=>'imglogout')); 
+					}
+					else
+					{
+						echo $this->Html->image('no_image_available_small.png', array('alt'=>'thank you' , 'class'=>'imglogout')); 
+					}
+			?>				
+		</figure>			
+		<?php if(!empty($slider_deal)) { ?>
+			<div class="sliderSec share-slider-new">
+				<ul class="bxslider">
+					<?php 
+							foreach($slider_deal as $slider) 
+							{ 
+								if(!empty($slider['AdminIcon']['image']) && file_exists(DEALSLIDER.$slider['AdminIcon']['image'])) 
+								{
+					?>
+									<li>								
+										<div class="tecket thanks-slider-nu">
+											<figure>
+												
+												<?php 
+														echo $this->Html->image(DEALSLIDERURL.$slider['AdminIcon']['image'], 
+																					array(
+																						'alt'=>$slider['AdminClientDeal']['deal_icon'],																				
+																						'width'=>98, 'height'=>93
+																					)
+																				); 
+												?>
+											</figure>
+											<div class="figure-info">
+												<h3><?php echo $this->Text->truncate($slider['Admin']['company'], '20', array('exact'=>true)); ?></h3>
+												<h3><?php echo $this->Text->truncate($slider['AdminClientDeal']['title'], '20', array('exact'=>true)); ?></h3>
+												<p>
+													<?php //echo $this->Text->truncate($slider['AdminClientDeal']['description'], '80', array('exact'=>true)); ?>
+												</p>
+												<p>
+													<?php 
+															if($slider['AdminClientDeal']['type'] == 1)
+															{
+																echo 'Get '.$slider['AdminClientDeal']['price'].'% off '.$slider['AdminClientDeal']['product'];
+															}
+															else if($slider['AdminClientDeal']['type'] == 2)
+															{
+																echo 'Get $'.$slider['AdminClientDeal']['price'].' off '.$slider['AdminClientDeal']['product'];
+															}
+															else if($slider['AdminClientDeal']['type'] == 3)
+															{
+																echo 'Buy One Get One Free '.$slider['AdminClientDeal']['product'];																
+															}
+															else
+															{
+																echo $slider['AdminClientDeal']['product'];
+															}
+													?>
+												</p>
+											</div>
+										</div>	
+									</li>
+					<?php 		} 
+							} 
+					?>					
+				</ul>
+			</div>
+			<div class="index-popup share clinet_deal">
+				<?php echo $this->Form->create('Share', array('id'=>'share')); ?>
+				<?php echo $this->Form->input('type', array('type'=>'hidden', 'id'=>'type')); ?>
+				<div class="wrap">					
+					<h4>Get other local deals by clicking, then sharing them below</h4>
+					<div class="sliderSec">
+						<ul class="bxslider2">
+							<?php if(count($slider_deal) > 2) { ?>
+								<?php 
+										
+										foreach($slider_deal as $key=>$slider_pop) 
+										{ 
+											
+											if(!empty($slider_pop['AdminIcon']['image']) && file_exists(DEALSLIDER.$slider_pop['AdminIcon']['image'])) 
+											{
+								?>
+											<?php if(($key+1) % 2 != 0) { ?>
+												<li>
+											<?php } ?>								
+													<div class="tecket remove-checkbox tecket-with-nopadding">
+														<label>
+															<figure >
+																<?php 	echo $this->Form->inut('MultiShare.ids.', array('type'=>'checkbox', 'value'=>$slider_pop['AdminClientDeal']['id'].'-'.$slider_pop['AdminClientDeal']['user_id'], 'class'=>'alt-d')); ?>
+																<?php 
+																		echo $this->Html->image(DEALSLIDERURL.$slider_pop['AdminIcon']['image'], 
+																									array(
+																										'alt'=>$slider_pop['AdminClientDeal']['deal_icon'],																				
+																										'width'=>98, 'height'=>93,
+																										'class'=>''
+																									)
+																								); 
+																?>
+															</figure>
+														
+															<div class="figure-info">
+																<h3><?php echo $this->Text->truncate($slider_pop['Admin']['company'], '20', array('exact'=>true)); ?></h3>
+																<h3><?php echo $slider_pop['AdminClientDeal']['title']; ?></h3>
+																<p>
+																	<?php //echo $this->Text->truncate($slider_pop['AdminClientDeal']['description'], '80', array('exact'=>true)); ?>
+																
+																	<?php 
+																			if($slider_pop['AdminClientDeal']['type'] == 1)
+																			{
+																				echo 'Get '.$slider_pop['AdminClientDeal']['price'].'% off '.$slider_pop['AdminClientDeal']['product'];
+																			}
+																			else if($slider_pop['AdminClientDeal']['type'] == 2)
+																			{
+																				echo 'Get $'.$slider_pop['AdminClientDeal']['price'].' off '.$slider_pop['AdminClientDeal']['product'];
+																			}
+																			else if($slider_pop['AdminClientDeal']['type'] == 3)
+																			{
+																				echo 'Buy One Get One Free '.$slider_pop['AdminClientDeal']['product'];																
+																			}
+																			else
+																			{
+																				echo $slider_pop['AdminClientDeal']['product'];
+																			}
+																	?>
+												
+																</p>
+															</div>
+														</label>
+													</div>	
+											<?php if(($key+1) % 2 == 0) { ?>
+												</li>
+											<?php } ?>
+								<?php 		} 
+										} 
+								?>
+							<?php } else { ?>
+								<?php 
+										
+										foreach($slider_deal as $key=>$slider_pop) 
+										{ 
+											
+											if(!empty($slider_pop['AdminIcon']['image']) && file_exists(DEALSLIDER.$slider_pop['AdminIcon']['image'])) 
+											{
+								?>
+											
+												<li>
+																		
+													<div class="tecket remove-checkbox tecket-with-nopadding">
+														<label>
+															<figure >
+																<?php 	echo $this->Form->inut('MultiShare.ids.', array('type'=>'checkbox', 'value'=>$slider_pop['AdminClientDeal']['id'].'-'.$slider_pop['AdminClientDeal']['user_id'], 'class'=>'alt-d')); ?>
+																<?php 
+																		echo $this->Html->image(DEALSLIDERURL.$slider_pop['AdminIcon']['image'], 
+																									array(
+																										'alt'=>$slider_pop['AdminClientDeal']['deal_icon'],																				
+																										'width'=>98, 'height'=>93,
+																										'class'=>''
+																									)
+																								); 
+																?>
+															</figure>
+														
+															<div class="figure-info">
+																<h3><?php echo $this->Text->truncate($slider_pop['Admin']['company'], '20', array('exact'=>true)); ?></h3>
+																<h3><?php echo $slider_pop['AdminClientDeal']['title']; ?></h3>
+																<p>
+																	<?php //echo $this->Text->truncate($slider_pop['AdminClientDeal']['description'], '80', array('exact'=>true)); ?>
+																
+																	<?php 
+																			if($slider_pop['AdminClientDeal']['type'] == 1)
+																			{
+																				echo 'Get '.$slider_pop['AdminClientDeal']['price'].'% off '.$slider_pop['AdminClientDeal']['product'];
+																			}
+																			else if($slider['AdminClientDeal']['type'] == 2)
+																			{
+																				echo 'Get $'.$slider_pop['AdminClientDeal']['price'].' off '.$slider_pop['AdminClientDeal']['product'];
+																			}
+																			else if($slider_pop['AdminClientDeal']['type'] == 3)
+																			{
+																				echo 'Buy One Get One Free '.$slider_pop['AdminClientDeal']['product'];																
+																			}
+																			else
+																			{
+																				echo $slider_pop['AdminClientDeal']['product'];
+																			}
+																	?>
+												
+																</p>
+															</div>
+														</label>
+													</div>	
+											
+												</li>
+										
+								<?php 		} 
+										} 
+								?>
+							<?php } ?>
+						</ul>
+					</div>
+					<figure>
+						<label class="error share-error"></label>
+						
+						<a class="share-more-deals">
+							<?php echo $this->Html->image('share-btn.png', array('class'=>'share', 'alt'=>'share')); ?>
+						</a>
+					</figure>
+					<a href="#" class="close"><span>X</span></a>
+				</div>	
+			</div>
+			<div id="overlay"></div>			
+		<?php } ?>
+	</section>
+	<footer class="footer">
+		<h3>Want This APP?</h3>
+		<p>Call 1800-SocialEyes. Turn Your Business into a Social Referral Center!</p>
+	</footer>
+</div>
+</div>
+  
+
